@@ -41,6 +41,28 @@ $args = array_slice($argv, 1);
 $status = in_array('--status', $args, true);
 $dryRun = in_array('--dry-run', $args, true);
 
+// --sql emits the schema as one importable script instead of connecting.
+// Shared hosting without shell access (InfinityFree and similar) has no way
+// to run this tool on the server; the output goes into phpMyAdmin instead.
+//
+// --sql=<file> writes the file directly. Prefer it over shell redirection:
+// PowerShell's `>` produces UTF-8 WITH a byte-order mark, and phpMyAdmin
+// reports that BOM as a syntax error on line 1 of an otherwise valid script.
+$sqlOut = null;
+foreach ($args as $arg) {
+    if ($arg === '--sql') $sqlOut = 'php://stdout';
+    if (str_starts_with($arg, '--sql=')) $sqlOut = substr($arg, 6);
+}
+
+if ($sqlOut !== null) {
+    try {
+        exit(emitSql($sqlOut));
+    } catch (Throwable $e) {
+        fwrite(STDERR, "\n  ERROR  " . $e->getMessage() . "\n\n");
+        exit(1);
+    }
+}
+
 try {
     exit(run($status, $dryRun));
 } catch (Throwable $e) {
@@ -49,6 +71,69 @@ try {
 }
 
 /* ========================================================================== */
+
+/**
+ * Writes every migration to stdout as a single import script, including the
+ * schema_migrations bookkeeping, so a database populated this way is
+ * indistinguishable from one built by the runner.
+ *
+ * Deliberately does not connect: it is generated on a workstation and carried
+ * to a host this machine cannot reach.
+ */
+function emitSql(string $target): int
+{
+    $migrations = availableMigrations();
+    if (!$migrations) throw new RuntimeException('No migration files found in migrations/.');
+
+    $out = fopen($target, 'wb');
+    if ($out === false) throw new RuntimeException("Cannot write to $target.");
+
+    fwrite($out, "-- Digos Payroll - full schema import\n");
+    fwrite($out, '-- Generated ' . date('Y-m-d H:i') . " by tools/migrate.php --sql\n");
+    fwrite($out, "--\n");
+    fwrite($out, "-- For hosts with no shell access. Import through phpMyAdmin into an\n");
+    fwrite($out, "-- EMPTY database; it is not safe to re-run over existing data.\n");
+    fwrite($out, "--\n");
+    fwrite($out, "-- No CREATE DATABASE or USE statement: shared hosts name the database\n");
+    fwrite($out, "-- for you, and phpMyAdmin imports into whichever one is selected.\n\n");
+
+    fwrite($out, "SET SESSION sql_mode = '" . DB_SQL_MODE . "';\n\n");
+
+    fwrite($out, "CREATE TABLE IF NOT EXISTS schema_migrations (\n"
+        . "    Version   INT          NOT NULL PRIMARY KEY,\n"
+        . "    Filename  VARCHAR(190) NOT NULL,\n"
+        . "    Checksum  CHAR(64)     NOT NULL,\n"
+        . "    AppliedAt DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+        . "    AppliedBy VARCHAR(120) NOT NULL DEFAULT ''\n"
+        . ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;\n\n");
+
+    foreach ($migrations as $migration) {
+        $sql = fileContents($migration);
+
+        fwrite($out, str_repeat('-', 76) . "\n");
+        fwrite($out, '-- ' . $migration['file'] . "\n");
+        fwrite($out, str_repeat('-', 76) . "\n\n");
+
+        foreach (StatementSplitter::split($sql) as $statement) {
+            fwrite($out, $statement . ";\n");
+        }
+
+        fwrite($out, sprintf(
+            "\nINSERT INTO schema_migrations (Version, Filename, Checksum, AppliedBy)\n"
+            . "VALUES (%d, '%s', '%s', 'sql-import');\n\n",
+            $migration['version'],
+            str_replace("'", "''", $migration['file']),
+            MigrationFile::checksum($sql)));
+    }
+
+    fwrite($out, "-- End of import.\n");
+    fclose($out);
+
+    if ($target !== 'php://stdout') {
+        say('wrote ' . $target . ' (' . number_format((float) filesize($target)) . ' bytes, no BOM)');
+    }
+    return 0;
+}
 
 function run(bool $statusOnly, bool $dryRun): int
 {

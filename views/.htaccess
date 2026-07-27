@@ -1,0 +1,11 @@
+# View partials are HTML fragments included by public/index.php. Served
+# directly they would render outside the SPA shell, without the session
+# bootstrap that hides screens the signed-in role may not use.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

@@ -2,6 +2,9 @@
 /vendor/
 composer.phar
 
+# Build output (tools/build-deploy.php)
+/dist/
+
 # Runtime artefacts
 /backups/*.sql
 /.phpunit.cache/

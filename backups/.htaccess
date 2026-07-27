@@ -1,0 +1,17 @@
+# Backup dumps contain the entire database in plain text: every employee's
+# TIN, GSIS, PhilHealth and Pag-IBIG numbers, home address, contract rate and
+# net pay, plus every user's bcrypt password hash.
+#
+# A single directory listing or guessed filename here is a complete personal
+# data breach. Downloads must go through public/download.php, which checks
+# authentication and the backup.run permission and writes an audit entry.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+Options -Indexes

@@ -61,12 +61,36 @@ error_reporting(E_ALL);
 ini_set('display_errors', '0');          // errors go to the JSON envelope/log
 ini_set('log_errors', '1');
 
+/**
+ * True when the request reached us over HTTPS.
+ *
+ * Shared hosts and CDNs terminate TLS at a proxy and forward plain HTTP, so
+ * $_SERVER['HTTPS'] alone reports "no" on a site that is in fact encrypted.
+ * The forwarded headers are only trustworthy behind such a proxy - which is
+ * exactly where they appear - and the consequence of believing them wrongly
+ * is a cookie marked Secure on a plain-HTTP site, which fails safe: the
+ * browser simply refuses to send it.
+ */
+function requestIsHttps(): bool
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') return true;
+    if (($_SERVER['SERVER_PORT'] ?? '') === '443') return true;
+
+    $forwarded = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    if ($forwarded === 'https') return true;
+
+    return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on';
+}
+
 // CLI entry points (cron.php, tools/*.php) have no browser and no session.
 if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',
-        // 'secure' => true,             // enable when serving over HTTPS
+        // Set automatically rather than by hand: this system now runs on
+        // hosting where forgetting it means session cookies for a payroll
+        // system travelling in clear text.
+        'secure' => requestIsHttps(),
     ]);
     session_start();
 }

@@ -1,0 +1,16 @@
+# The application layer must never be served over HTTP.
+#
+# On a correctly configured host this directory sits outside the web root and
+# this file is redundant. On shared hosting where everything must live under
+# the docroot (InfinityFree and similar), it is the only thing standing
+# between the internet and app/config.local.php.
+#
+# Both syntaxes are present so this holds on Apache 2.2 and 2.4.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
