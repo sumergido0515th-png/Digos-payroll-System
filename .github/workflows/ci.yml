@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: PHP ${{ matrix.php }} / ${{ matrix.db }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.1 is the floor stated in README-PHP.md; 8.2 is what the XAMPP
+        # deployment actually runs.
+        php: ["8.1", "8.2"]
+        # mariadb:10.4 is what the deployment runs today (XAMPP ships it, and
+        # it is END OF LIFE since June 2024 - no security patches).
+        # mariadb:10.11 is the LTS upgrade target, supported to 2028.
+        # Testing both means the upgrade is already proven when it happens.
+        db: ["mariadb:10.4", "mariadb:10.11"]
+
+    services:
+      database:
+        image: ${{ matrix.db }}
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: digos_payroll_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized || mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring, json
+          coverage: none
+
+      - name: Cache composer packages
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ matrix.php }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Lint every PHP file
+        run: |
+          find app public views tools -name '*.php' -print0 \
+            | xargs -0 -n1 -P4 php -l > /dev/null
+
+      # Structural guards: database access confined to the repository layer,
+      # and every endpoint routed, permissioned and audited. These need no
+      # database and are the cheapest failures to get.
+      - name: Architecture guards
+        run: vendor/bin/phpunit --testsuite architecture
+
+      - name: Unit tests
+        run: vendor/bin/phpunit --testsuite unit
+
+      # Proves migrations apply cleanly to an empty database, and that
+      # re-running them is a no-op.
+      - name: Apply migrations
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: digos_payroll_test
+          DB_USER: root
+          DB_PASS: ""
+        run: |
+          php tools/migrate.php
+          php tools/migrate.php --status
+
+      - name: Migrations are idempotent
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: digos_payroll_test
+          DB_USER: root
+          DB_PASS: ""
+        run: |
+          php tools/migrate.php | tee /tmp/second-run.txt
+          grep -q "schema is up to date" /tmp/second-run.txt
+
+      # Includes SqlModeTest, which fails if strict mode is ever lost from the
+      # connection - the guard against silent value coercion in payroll data.
+      - name: Integration tests
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: digos_payroll_test
+          DB_USER: root
+          DB_PASS: ""
+        run: vendor/bin/phpunit --testsuite integration

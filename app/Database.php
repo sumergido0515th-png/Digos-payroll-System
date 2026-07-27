@@ -23,6 +23,10 @@ final class DB
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                     PDO::ATTR_EMULATE_PREPARES   => false,
+                    // Rejects out-of-range and mistyped values instead of
+                    // silently coercing them - see DB_SQL_MODE in config.php.
+                    PDO::MYSQL_ATTR_INIT_COMMAND =>
+                        "SET SESSION sql_mode = '" . DB_SQL_MODE . "'",
                 ]
             );
         }

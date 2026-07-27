@@ -1,0 +1,18 @@
+# Dependencies (composer.lock IS committed - this is an application, not a library)
+/vendor/
+composer.phar
+
+# Runtime artefacts
+/backups/*.sql
+/.phpunit.cache/
+/.phpunit.result.cache
+
+# Local environment overrides (app/config.php holds real credentials)
+/app/config.local.php
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini

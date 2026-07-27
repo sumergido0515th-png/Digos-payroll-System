@@ -8,7 +8,7 @@ stack (XAMPP, Laragon, IIS + PHP, Linux + Apache/Nginx).
 
 | Area             | Apps Script                 | PHP                                                            |
 | ---------------- | --------------------------- | -------------------------------------------------------------- |
-| Database         | Google Sheets tables        | MySQL (`schema.sql`, PDO prepared statements)                  |
+| Database         | Google Sheets tables        | MySQL (`migrations/`, PDO prepared statements)                 |
 | Sign-in          | Google account              | Email + password (bcrypt), PHP sessions                        |
 | Frontend         | identical                   | identical (same Bootstrap 5 SPA, same page modules)            |
 | API              | `google.script.run`         | `fetch()` → `public/api.php` (same action names & JSON shapes) |
@@ -21,9 +21,15 @@ stack (XAMPP, Laragon, IIS + PHP, Linux + Apache/Nginx).
 
 ```
 php/
-├─ schema.sql              Database + seed (admin account, settings, funds)
+├─ migrations/             Numbered schema migrations, applied once, in order
+├─ tools/migrate.php       Migration runner (CLI) — replaces the old schema.sql
+├─ tests/                  PHPUnit: architecture guards, unit, integration
+├─ docs/                   PHASE_PLAN.md (roadmap), GAP_MAP.md (current vs. target)
+├─ composer.json           Dependencies + PSR-4 autoloading for app/Domain
 ├─ cron.php                Automatic-backup runner (CLI, honours BackupSchedule)
 ├─ app/                    Application layer (NOT web-accessible)
+│  ├─ Domain/              New namespaced code (Digos\Domain\), pure where possible
+│  ├─ Repo/                The only place direct database access is allowed
 │  ├─ config.php           DB credentials, timezone, mail-from  ← EDIT THIS
 │  ├─ bootstrap.php        Loads everything below
 │  ├─ Database.php         PDO wrapper (rows/row/exec/insert/update/tx)
@@ -48,12 +54,44 @@ php/
 
 1. **Requirements:** PHP 8.1+ with `pdo_mysql`, MySQL/MariaDB.
 2. Copy the `php/` folder somewhere outside the web root, e.g. `C:\apps\digos-payroll\`.
-3. **Create the database:**
+3. **Configure:** edit `app/config.php` — DB host/name (and `MAIL_FROM`). Leave the
+   credentials alone; step 5 replaces them.
+4. **Create/update the database:**
+
    ```
-   mysql -u root -p < schema.sql
+   php tools/migrate.php
    ```
-4. **Configure:** edit `app/config.php` — DB host/user/password (and `MAIL_FROM`).
-5. **Point the docroot at `public/`.** In Apache (`httpd-vhosts.conf`):
+
+   The runner creates the database if it does not exist and applies every
+   pending migration from `migrations/`, so this same command handles both a
+   fresh install and an upgrade. `--status` lists what is applied and pending;
+   `--dry-run` shows what would run without changing anything.
+
+   Migrations are recorded in `schema_migrations` and checksum-verified: an
+   already-applied migration that has been edited is reported rather than
+   silently skipped. **Take a backup before migrating real data** — MariaDB
+   commits implicitly on DDL, so a failed migration cannot be rolled back.
+5. **Create least-privilege database accounts:**
+
+   ```
+   php tools/create-app-user.php
+   ```
+
+   XAMPP's default is to run everything as `root` with no password, which gives
+   the web application DROP rights over every database on the server. This
+   creates two narrower accounts and writes `app/config.local.php` (git-ignored)
+   pointing the application at the restricted one:
+
+   | Account | Rights | Used by |
+   | --- | --- | --- |
+   | `<db>_app` | SELECT, INSERT, UPDATE, DELETE | the web application |
+   | `<db>_migrate` | the above plus CREATE, ALTER, DROP, INDEX | `tools/migrate.php` only |
+
+   `tools/migrate.php` picks up the migrate account automatically. **Keep a copy
+   of `app/config.local.php`** — it is not in version control and the passwords
+   cannot be recovered from the database.
+
+6. **Point the docroot at `public/`.** In Apache (`httpd-vhosts.conf`):
 
    ```apache
    <VirtualHost *:80>
@@ -75,14 +113,45 @@ php/
    **403** for `app/` and `backups/` (confirmed on Apache 2.4 + PHP 8.1).
    Prefer the vhost setup for production; htdocs is fine for a LAN pilot.
 
-6. **Sign in:** `admin@digos.gov.ph` / `ChangeMe!123` — then immediately go to
+7. **Sign in:** `admin@digos.gov.ph` / `ChangeMe!123` — then immediately go to
    **Users** and change the password (edit the admin, set a new password).
-7. **First-run configuration** is the same as the Apps Script edition:
+8. **First-run configuration** is the same as the Apps Script edition:
    Settings (signatories, rates), Users, Offices, Periods.
-8. **Automatic backups:** register a daily 2 AM task running
+9. **Automatic backups:** register a daily 2 AM task running
    `php.exe C:\apps\digos-payroll\cron.php`
    (Task Scheduler on Windows, crontab on Linux). The script itself skips
    runs according to the _Backup Schedule_ setting (off/daily/weekly).
+
+## Development
+
+```
+composer install                              dependencies (PHPUnit)
+php vendor/bin/phpunit                        full suite
+php vendor/bin/phpunit --testsuite unit       pure logic, no database
+php vendor/bin/phpunit --testsuite architecture   structural guards
+```
+
+The **architecture** suite enforces two structural rules that the phase plan
+depends on, and it runs in CI on every push:
+
+- Direct `DB::` access is confined to `app/Repo/`, so the scope-enforcement
+  gateway added in Phase 2 cannot be bypassed by a stray query. Pre-existing
+  modules are grandfathered into an allowlist that may only shrink.
+- Every endpoint is routed, declares a permission, and — if it mutates
+  anything — writes an audit-log action.
+
+The **integration** suite needs a database whose name contains `test`; it
+refuses to run against anything else, so it can never touch live payroll data:
+
+```
+DB_NAME=digos_payroll_test php tools/migrate.php
+DB_NAME=digos_payroll_test php vendor/bin/phpunit --testsuite integration
+```
+
+`DB_HOST`, `DB_NAME`, `DB_USER` and `DB_PASS` override `app/config.php` when set.
+
+Roadmap and conventions: [`docs/PHASE_PLAN.md`](docs/PHASE_PLAN.md),
+[`docs/GAP_MAP.md`](docs/GAP_MAP.md), [`CLAUDE.md`](CLAUDE.md).
 
 ## Security notes
 
