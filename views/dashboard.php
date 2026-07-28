@@ -38,8 +38,16 @@
 /** Dashboard page module. */
 Pages.dashboard = (function () {
   var chartsReady = false;
+  var lastData = null;
   google.charts.load('current', { packages: ['corechart'] });
   google.charts.setOnLoadCallback(function () { chartsReady = true; });
+
+  // Google Charts bakes the label colour into the SVG it emits, so flipping the
+  // theme while the dashboard is open leaves the axis and legend text in the
+  // previous theme's grey. Redraw from the data we already have.
+  window.addEventListener('themechange', function () {
+    if (lastData) renderCharts(lastData);
+  });
 
   /** One stat card definition: [label, valueKey, icon, color]. */
   var CARDS = [
@@ -103,6 +111,7 @@ Pages.dashboard = (function () {
   return {
     init: function () {
       busy(api('apiGetDashboard')).then(function (d) {
+        lastData = d;
         renderCards(d.stats);
         renderCharts(d);
         renderRecent(d.recent);

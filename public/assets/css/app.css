@@ -145,6 +145,19 @@ body.sidebar-hidden #main { margin-left: 0; }
 .st-Draft { background: #e7e9ef; color: #4a5165; }
 .st-Pending, .st-Closed { background: #fff3cd; color: #8a6d00; }
 .st-Approved { background: #d6e4ff; color: #0b3d91; }
+/* Status chips are the one place with a hardcoded light palette: pale fill,
+   dark ink. In dark mode both invert so the chip sits in the surface rather
+   than glowing on top of it, while keeping the same status hue. */
+[data-theme="dark"] .st-Active,
+[data-theme="dark"] .st-Open,
+[data-theme="dark"] .st-Released { background: #123a26; color: #6ee7a8; }
+[data-theme="dark"] .st-Inactive,
+[data-theme="dark"] .st-Cancelled,
+[data-theme="dark"] .st-Locked { background: #431c1c; color: #f7a4a4; }
+[data-theme="dark"] .st-Draft { background: #2a3244; color: #c2c9da; }
+[data-theme="dark"] .st-Pending,
+[data-theme="dark"] .st-Closed { background: #3d3113; color: #f0cd6a; }
+[data-theme="dark"] .st-Approved { background: #1c3163; color: #a8c4ff; }
 
 /* ---- entry grid -------------------------------------------------------- */
 #grid-table input { min-width: 58px; text-align: right; padding: 2px 6px; font-size: 13px; }

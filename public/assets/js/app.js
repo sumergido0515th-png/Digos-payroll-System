@@ -245,12 +245,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // Theme (persisted locally per device).
-  var theme = localStorage.getItem('dcpms-theme') || 'light';
-  document.documentElement.setAttribute('data-theme', theme);
+  // Theme (persisted locally per device). data-bs-theme has to move with
+  // data-theme: it is what repoints Bootstrap's own body/muted/border colours,
+  // and without it the framework keeps painting near-black text on our dark
+  // surfaces. Pages that draw their own text (charts) listen for themechange.
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-bs-theme', t);
+    window.dispatchEvent(new CustomEvent('themechange', { detail: t }));
+  }
+  App.applyTheme = applyTheme;
+  applyTheme(localStorage.getItem('dcpms-theme') || 'light');
   document.getElementById('btn-theme').onclick = function () {
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
+    applyTheme(next);
     localStorage.setItem('dcpms-theme', next);
   };
 
@@ -280,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('brand-name').textContent = s.settings.governmentName;
     }
     if (s.settings && s.settings.theme === 'dark' && !localStorage.getItem('dcpms-theme')) {
-      document.documentElement.setAttribute('data-theme', 'dark');
+      applyTheme('dark');
     }
 
     // Hide menu items the role cannot use.
