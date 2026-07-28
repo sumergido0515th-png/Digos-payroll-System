@@ -110,9 +110,14 @@ function emitSql(string $target): int
     foreach ($migrations as $migration) {
         $sql = fileContents($migration);
 
-        fwrite($out, str_repeat('-', 76) . "\n");
+        // Every comment line must begin "-- " WITH the space. MySQL only
+        // treats a double dash as a comment when whitespace follows it, so a
+        // bare rule of dashes is parsed as SQL and fails with a syntax error.
+        $rule = '-- ' . str_repeat('=', 72);
+
+        fwrite($out, $rule . "\n");
         fwrite($out, '-- ' . $migration['file'] . "\n");
-        fwrite($out, str_repeat('-', 76) . "\n\n");
+        fwrite($out, $rule . "\n\n");
 
         foreach (StatementSplitter::split($sql) as $statement) {
             fwrite($out, $statement . ";\n");
