@@ -358,4 +358,5 @@ One live payroll period processed end-to-end with zero manual override needed.
 | 2026-07-27 | Initial phase plan created |
 | 2026-07-27 | Moved into the repository at `docs/PHASE_PLAN.md`; character encoding repaired (the original was double-encoded UTF-8) |
 | 2026-07-27 | Phase 0 completed. Platform decision recorded: **MySQL 8, not Postgres** — scope enforcement will be an application gateway backed by an architecture test, since MySQL has no row-level security |
+| 2026-07-28 | `Employees.CashCard` added out of sequence (migration `0002`) on request — master data only, not on the printed form. **Phase 1 must fold it into the Tier 1 / Tier 2 split**: it is payee payment data and belongs in the restricted tier alongside TIN/GSIS/PhilHealth/Pag-IBIG |
 | 2026-07-27 | Phase 0 audit raised three revisions to this plan that are **still awaiting approval**: (1) day-level DTR does not exist and blocks Phases 4–6, needing a Phase 1 schema addition plus a new Phase 3B; (2) `PreparedBy` is a display-name string, so Phase 2's segregation-of-duties check needs a Phase 1 foreign key first; (3) Phase 2's Postgres RLS option does not apply. See [GAP_MAP.md](GAP_MAP.md) |

@@ -42,7 +42,7 @@ Baseline schema preserved verbatim at [`migrations/0001_baseline_schema.sql`](..
 | Feature area | Current state | Target (phase plan) | Gap |
 |---|---|---|---|
 | **Employee — Tier 1 directory** | `Employees` table: name, `EmployeeNo`, `OfficeCode`, `Position`, `EmploymentType`, `PhotoURL`, `Status` | Same fields, split into its own tier | `modify` |
-| **Employee — Tier 2 restricted** | **Same table.** `TIN`, `GSIS`, `PhilHealth`, `PagIBIG`, `Birthdate`, `Address`, `SalaryRate`, `DailyRate`, `HourlyRate`, `MonthlyRate` all sit in `Employees` and are returned by `SELECT *` ([Master.php:18](../app/Master.php#L18)) to every role holding `employee.view` — HR, Payroll Officer, Accounting, Timekeeper **and Viewer** | Separate restricted tier, access-controlled | `modify` — **live exposure, fix early** |
+| **Employee — Tier 2 restricted** | **Same table.** `TIN`, `GSIS`, `PhilHealth`, `PagIBIG`, `CashCard`, `Birthdate`, `Address`, `SalaryRate`, `DailyRate`, `HourlyRate`, `MonthlyRate` all sit in `Employees` and are returned by `SELECT *` ([Master.php:18](../app/Master.php#L18)) to every role holding `employee.view` — HR, Payroll Officer, Accounting, Timekeeper **and Viewer** | Separate restricted tier, access-controlled | `modify` — **live exposure, fix early** |
 | **Biometric number** | Does not exist | Tier 1 field | `build new` |
 | **Contract validity flag** | `ContractStart` / `ContractEnd` columns on `Employees`; no history | Tier 1 flag derived from a Contract entity | `modify` |
 | **Contract entity** | Does not exist. One start/end pair per employee, overwritten on edit — no rate history, no versioning | `Contract`: employee, type, rate, effectivity start/end, status | `build new` |

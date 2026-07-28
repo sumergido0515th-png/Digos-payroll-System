@@ -1,6 +1,6 @@
 # Backup dumps contain the entire database in plain text: every employee's
-# TIN, GSIS, PhilHealth and Pag-IBIG numbers, home address, contract rate and
-# net pay, plus every user's bcrypt password hash.
+# TIN, GSIS, PhilHealth, Pag-IBIG and cash card numbers, home address, contract
+# rate and net pay, plus every user's bcrypt password hash.
 #
 # A single directory listing or guessed filename here is a complete personal
 # data breach. Downloads must go through public/download.php, which checks

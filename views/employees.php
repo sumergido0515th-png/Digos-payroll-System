@@ -8,7 +8,7 @@
     <div class="card-body py-2">
       <div class="row g-2 align-items-end">
         <div class="col-md-3"><label class="form-label">Live Search</label>
-          <input class="form-control form-control-sm" id="emp-search" placeholder="Name, ID, position, TIN..."></div>
+          <input class="form-control form-control-sm" id="emp-search" placeholder="Name, ID, position, TIN, cash card..."></div>
         <div class="col-md-2"><label class="form-label">Office</label>
           <select class="form-select form-select-sm" id="emp-f-office"></select></div>
         <div class="col-md-2"><label class="form-label">Employment Type</label>
@@ -28,7 +28,7 @@
       <table class="table table-hover">
         <thead><tr>
           <th>Employee No.</th><th>Name</th><th>Position</th><th>Office</th>
-          <th>Type</th><th class="text-end">Daily Rate</th><th>Status</th><th></th>
+          <th>Type</th><th>Cash Card</th><th class="text-end">Daily Rate</th><th>Status</th><th></th>
         </tr></thead>
         <tbody id="emp-rows"></tbody>
       </table>
@@ -108,13 +108,14 @@ Pages.employees = (function () {
           '<td class="fw-semibold">' + esc(e.FullName) + '</td>' +
           '<td>' + esc(e.Position) + '</td><td>' + esc(e.OfficeCode) + '</td>' +
           '<td>' + esc(e.EmploymentType) + '</td>' +
+          '<td class="text-nowrap">' + (e.CashCard ? esc(e.CashCard) : '<span class="text-muted">&mdash;</span>') + '</td>' +
           '<td class="text-money">' + fmtMoney(e.DailyRate) + '</td>' +
           '<td>' + badge(e.Status) + '</td>' +
           '<td class="text-end text-nowrap">' +
           (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit(\'' + e.EmployeeID + '\')') : '') +
           (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove(\'' + e.EmployeeID + '\')', 'text-danger') : '') +
           '</td></tr>';
-      }).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No employees found.</td></tr>';
+      }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No employees found.</td></tr>';
     });
   }
 
@@ -148,6 +149,7 @@ Pages.employees = (function () {
       '<div class="col-12 fw-bold text-primary small mt-2">GOVERNMENT IDs</div>' +
       inp('TIN', 'TIN', 'text', 3) + inp('GSIS', 'GSIS', 'text', 3) +
       inp('PhilHealth', 'PhilHealth', 'text', 3) + inp('Pag-IBIG', 'PagIBIG', 'text', 3) +
+      inp('Cash Card No.', 'CashCard', 'text', 3) +
       '<div class="col-12 fw-bold text-primary small mt-2">EMPLOYMENT</div>' +
       '<div class="col-md-4"><label class="form-label">Office *</label>' +
       '<select class="form-select form-select-sm" name="OfficeCode">' +

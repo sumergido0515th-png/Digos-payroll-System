@@ -23,7 +23,7 @@ function apiListEmployees(array $p, array $user): array
     if (!empty($p['Function'])) { $sql .= ' AND FunctionName = ?'; $params[] = $p['Function']; }
     if (!empty($p['search'])) {
         $fields = ['EmployeeID', 'EmployeeNo', 'LastName', 'FirstName', 'MiddleName',
-            'Position', 'Department', 'OfficeCode', 'Email', 'TIN'];
+            'Position', 'Department', 'OfficeCode', 'Email', 'TIN', 'CashCard'];
         $sql .= ' AND (' . implode(' OR ', array_map(fn($f) => "`$f` LIKE ?", $fields)) . ')';
         foreach ($fields as $f) $params[] = '%' . $p['search'] . '%';
     }
@@ -80,6 +80,7 @@ function apiSaveEmployee(array $p, array $user): array
         'EmployeeNo' => $p['EmployeeNo'] ?? '',
         'TIN' => $p['TIN'] ?? '', 'GSIS' => $p['GSIS'] ?? '',
         'PhilHealth' => $p['PhilHealth'] ?? '', 'PagIBIG' => $p['PagIBIG'] ?? '',
+        'CashCard' => $p['CashCard'] ?? '',
         'LastName' => $p['LastName'], 'FirstName' => $p['FirstName'],
         'MiddleName' => $p['MiddleName'] ?? '', 'Suffix' => $p['Suffix'] ?? '',
         'Birthdate' => $p['Birthdate'] ?: null, 'Gender' => $p['Gender'] ?? '',
