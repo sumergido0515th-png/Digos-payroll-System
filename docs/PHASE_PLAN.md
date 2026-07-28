@@ -54,7 +54,7 @@ One-time cost. Skipping this causes guessing in every later phase, which compoun
 
 ## Phase 1 — Core Data Model
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS — started 2026-07-28
 **Depends on:** Phase 0
 
 ### Objective
@@ -67,6 +67,8 @@ Freeze the schema that every other phase builds on.
 - **Employment type** — JO, COS, Plantilla, with distinct computation implications flagged
 - **Contract** — employee, type, rate, effectivity start/end, status
 - Define `charged_office_id` and `function_code` as first-class fields on payroll lines (not derived from employee's home office — see Phase 2 rationale)
+- **Day-level DTR** (settled revision 1) — `DtrDays`: one row per employee per date, carrying the raw in/out and the derived hours the period totals are currently keyed by hand. Phases 4, 5 and 6 all compute per date and have no input without it; Phase 3B builds capture on top
+- **`Payroll.PreparedByUser`** (settled revision 2) — a real foreign key to `Users`. The existing `PreparedBy` display string stays, because the printed form must show the name as rendered at the time; Phase 2's segregation-of-duties check reads the key
 - Draft migrations from current repo structure (per Phase 0 gap map) to this schema
 
 ### Deliverable
@@ -91,10 +93,8 @@ Build role × scope access control before any feature module, so nothing needs r
 ### Tasks
 - Define **roles** (Encoder, Pre-Auditor, Payroll In-Charge, Office Head, Admin, Internal Auditor/COA liaison, HRMO) — actions only, no scope baked in
 - Define **scope_grant** table: `user_id, role_code, office_id, function_code, employment_type, fiscal_year, can_read, can_write, valid_from, valid_to, granted_by, granted_at` (nullable fields = wildcard)
-- Implement enforcement:
-  - Postgres path: Row-Level Security policies per restricted table
-  - Sheets/Apps Script path: single `queryScoped(user, entity, filters)` gateway; direct range access to transactional sheets disallowed
-- Implement segregation-of-duties check: `payroll.prepared_by != current_user AND current_user NOT IN payroll.editors[]` gating entry to pre-audit actions
+- Implement enforcement as a **single application gateway** — `queryScoped(user, entity, filters)` — through which every read of a restricted table passes, applying the caller's scope grants. There is no database-level alternative: MariaDB has no row-level security, which is why `DB::` is confined to `app/Repo/` and guarded by `tests/Architecture/DatabaseAccessTest.php`. One direct query bypasses the gateway silently and leaks another office's rows
+- Implement segregation-of-duties check gating entry to pre-audit actions: `Payroll.PreparedByUser != current_user`, read from the Phase 1 foreign key and never from the `PreparedBy` display string
 - Implement cross-scope conflict detection pattern: system-level check runs with elevated privilege, returns **redacted** finding to each affected scope (no cross-office data leakage), full detail visible only to Admin/Payroll Administrator role
 - Grant lifecycle: expiring grants by default, delegation with capped duration and auto-revoke, auto-revoke on separation (HRMO contract-expired trigger)
 
@@ -135,10 +135,36 @@ This is repetitive boilerplate — a good phase to move fast on. Save careful/ex
 
 ---
 
-## Phase 4 — Resolvers
+## Phase 3B — DTR Capture
 
 **Status:** NOT STARTED
 **Depends on:** Phase 3
+**Added:** 2026-07-28, settled revision 1 from the Phase 0 audit
+
+### Objective
+Put real per-date timekeeping into `DtrDays`, so the resolvers have an input.
+
+### Tasks
+- Day-level DTR entry screen: employee × date grid for a period, scoped per Phase 2
+- Derive the period totals `computeLine()` consumes (`DaysWorked`, `HoursWorked`, `OvertimeHours`, `LateMinutes`, `UndertimeMinutes`, `AbsentDays`) **from** the day rows rather than accepting them keyed by hand
+- Keep manual entry possible but marked as such — Phase 6 rule #1 checks manual entries against covering Bio Exemptions, and cannot if manual and biometric entries are indistinguishable
+- Biometric log import + reconciliation against manual entries
+
+### Deliverable
+DTR capture module writing `DtrDays`, with period totals derived from it
+
+### Exit Gate
+For a test period, every `PayrollDetails` total is reproducible by summing that employee's `DtrDays` rows — verified by automated test, not by reading the screen. A manual entry is distinguishable from a biometric one in the stored data.
+
+### Token-saving notes
+The schema is already fixed in Phase 1, so this is capture UI plus a derivation function. The derivation is worth a fixture test: it is the seam where hand-keyed totals stop being authoritative, and Phases 4–6 all trust it.
+
+---
+
+## Phase 4 — Resolvers
+
+**Status:** NOT STARTED
+**Depends on:** Phase 3B
 
 ### Objective
 Build the two hardest logic pieces in the system as pure, tested functions.
@@ -322,7 +348,7 @@ Prove the system on one real payroll period before full reliance.
 
 ### Tasks
 - Run one live payroll period in parallel with the existing process
-- Migration script if moving off Sheets/current storage
+- Data migration script, if any office is still keeping payroll outside this system
 - Collect reprint-rate, suspension-ground, and settlement-turnaround metrics from the live run (baseline for future monitoring)
 - Sign-off checklist with Accounting/Audit stakeholders
 
@@ -357,6 +383,8 @@ One live payroll period processed end-to-end with zero manual override needed.
 |---|---|
 | 2026-07-27 | Initial phase plan created |
 | 2026-07-27 | Moved into the repository at `docs/PHASE_PLAN.md`; character encoding repaired (the original was double-encoded UTF-8) |
-| 2026-07-27 | Phase 0 completed. Platform decision recorded: **MySQL 8, not Postgres** — scope enforcement will be an application gateway backed by an architecture test, since MySQL has no row-level security |
+| 2026-07-27 | Phase 0 completed. Platform decision recorded: **MariaDB 10.4.32, not Postgres** — measured on the deployment server, not assumed; XAMPP ships MariaDB. Scope enforcement will be an application gateway backed by an architecture test, since MariaDB has no row-level security |
 | 2026-07-28 | `Employees.CashCard` added out of sequence (migration `0002`) on request — master data only, not on the printed form. **Phase 1 must fold it into the Tier 1 / Tier 2 split**: it is payee payment data and belongs in the restricted tier alongside TIN/GSIS/PhilHealth/Pag-IBIG |
-| 2026-07-27 | Phase 0 audit raised three revisions to this plan that are **still awaiting approval**: (1) day-level DTR does not exist and blocks Phases 4–6, needing a Phase 1 schema addition plus a new Phase 3B; (2) `PreparedBy` is a display-name string, so Phase 2's segregation-of-duties check needs a Phase 1 foreign key first; (3) Phase 2's Postgres RLS option does not apply. See [GAP_MAP.md](GAP_MAP.md) |
+| 2026-07-27 | Phase 0 audit raised three revisions to this plan. **All three settled 2026-07-28** — see the entry below |
+| 2026-07-28 | **The three Phase 0 revisions are settled, all as proposed.** (1) *Day-level DTR* — accepted: Phase 1 adds a per-employee-per-date `DtrDays` table, and a new **Phase 3B** builds capture on top of it before Phase 4. Phases 4, 5 and 6 all compute per date and have no input without it. (2) *`PreparedBy`* — accepted: Phase 1 adds `Payroll.PreparedByUser` as a real foreign key to `Users`, keeping the existing display-name string for the printed form, which must show the name as rendered at the time. Phase 2's segregation-of-duties check reads the key, never the string. (3) *Postgres RLS* — accepted: removed from Phase 2. MariaDB has no row-level security, so the application-gateway path is the only path, and it is now stated as such rather than as one of two options |
+| 2026-07-28 | Removed two stale assumptions that contradicted the repository: Phase 2's Postgres/Apps Script enforcement fork, and Phase 10's "moving off Sheets". This system is PHP + MariaDB and always has been in this repo; the references predate it and would have sent a session designing against the wrong platform |
