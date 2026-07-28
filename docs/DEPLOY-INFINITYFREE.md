@@ -4,8 +4,8 @@
 
 ## Read this first
 
-This system stores, for every employee: **TIN, GSIS, PhilHealth and Pag-IBIG
-numbers, home address, birthdate, contract rate and net pay**. The `Users` table
+This system stores, for every employee: **TIN, GSIS, PhilHealth, Pag-IBIG and
+cash card numbers, home address, birthdate, contract rate and net pay**. The `Users` table
 stores password hashes. Any backup dump contains all of it in plain text.
 
 Free shared hosting is not a suitable home for that data:
@@ -100,8 +100,14 @@ they are not `localhost`/`root`:
 host      sqlNNN.infinityfree.com
 database  if0_XXXXXXXX_digos_payroll
 user      if0_XXXXXXXX
-password  (shown once)
+password  (shown once by the panel)
 ```
+
+> **Write these into `app/config.local.php` on the server and nowhere else.**
+> Do not put them in `app/config.php` — that file *is* tracked in git and will be
+> pushed to GitHub, so anything written there is public the moment the repository
+> is. `app/config.local.php` is git-ignored precisely so that credentials have
+> somewhere safe to live.
 
 ### 2. Import the schema
 
@@ -116,6 +122,15 @@ on top normally.
 > If phpMyAdmin reports a syntax error on line 1, the file has a byte-order mark.
 > Regenerate it with `php tools/migrate.php --sql=dist/deploy-schema.sql` rather than
 > shell redirection — PowerShell's `>` adds a BOM.
+
+**For a demo or UAT instance**, import `seeds/demo-seed.sql` afterwards, into the same
+database. It adds three offices and twelve fabricated employees so the payroll flow has
+something to run against. Every identifier in it is impossible by construction and every
+address is `.invalid`, so nothing it contains is personal data.
+
+It is not part of the upload package — `tools/build-deploy.php` ships only `app/`,
+`views/`, `public/` and `migrations/`. That is deliberate: a production database must not
+be able to inherit fabricated employees by accident. Import it only when you mean to.
 
 ### 3. Configure
 
