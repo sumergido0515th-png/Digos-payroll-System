@@ -29,6 +29,60 @@ const PRINT_ROWS = 15;
 /** Rows in the "Computation of Late" sub-table. */
 const LATE_ROWS = 6;
 
+/**
+ * Allotment class printed on the CAFOA. JO/COS wages are charged to MOOE, so
+ * this is 200 on every payroll this system produces - it is a constant rather
+ * than a setting because a different allotment class would mean a payroll that
+ * does not belong on this form at all.
+ */
+const CAFOA_ALLOTMENT = '200';
+
+/**
+ * Readable Function/PPA label for a printed form.
+ *
+ * `Offices` and `Payroll` hold the function as a free string, and what was
+ * typed there is sometimes the FunctionCode and sometimes the FunctionName -
+ * both share one column until Phase 1 collapses them onto the code. Printed
+ * forms want the name, so resolve either against the Functions master. A value
+ * matching neither is printed as stored rather than dropped: a wrong-looking
+ * label on the form is something the budget officer can catch, a silently
+ * blank cell is not.
+ */
+function functionLabel(string $stored): string
+{
+    $stored = trim($stored);
+    if ($stored === '') return '';
+
+    $row = DB::row(
+        'SELECT FunctionName FROM Functions WHERE FunctionCode = ? OR FunctionName = ? LIMIT 1',
+        [$stored, $stored]);
+
+    return $row['FunctionName'] ?? $stored;
+}
+
+/**
+ * The Function/PPA the payroll's own employees are assigned to.
+ *
+ * Last resort for the CAFOA, used only when neither the payroll nor its office
+ * records one. Returns '' unless every employee on the payroll agrees: a
+ * payroll spanning two functions is a real pre-audit finding, and picking one
+ * of them would print an amount under an appropriation it was not charged to.
+ * Returning '' defers to the caller's office-code fallback, which is visibly
+ * not a function name - better that than a confident wrong answer.
+ *
+ * @param array $employees Employee master rows keyed by id, as loaded by
+ *                         printBundle - raw DB shape, so `FunctionName`.
+ */
+function employeesFunction(array $employees): string
+{
+    $found = [];
+    foreach ($employees as $e) {
+        $f = trim((string) ($e['FunctionName'] ?? ''));
+        if ($f !== '') $found[$f] = true;
+    }
+    return count($found) === 1 ? (string) array_key_first($found) : '';
+}
+
 /** Loads everything one printed payroll needs. */
 function printBundle(string $payrollNo): array
 {
@@ -605,6 +659,29 @@ function buildCafoaHtml(string $payrollNo): string
     $logo = trim((string) ($s['OfficeLogoUrl'] ?? ''));
     $deptHead = $b['office']['OfficeHead'] ?? '';
 
+    // Function/PPA charged in the allotment table. The payroll header wins:
+    // one office can charge several functions, so the preparer's choice is
+    // recorded on the payroll itself rather than derived. It falls back to the
+    // function configured on the office, which is what a payroll saved before
+    // that field was captured needs - otherwise the cell prints blank and gets
+    // filled in by hand.
+    $function = trim((string) ($h['Function'] ?? ''));
+    if ($function === '') {
+        $function = trim((string) ($b['office']['Function'] ?? ''));
+    }
+    if ($function === '') {
+        $function = employeesFunction($b['employees']);
+    }
+    $function = functionLabel($function);
+
+    // The cell must never print blank. The office code is always set on a
+    // payroll, so it is the one value that is always available - and it points
+    // the budget officer at the office whose function is unrecorded, which is
+    // both the fix and something an empty cell cannot tell them.
+    if ($function === '') {
+        $function = trim((string) ($h['OfficeCode'] ?? ''));
+    }
+
     $cert = fn(string $text, string $name, string $title) =>
         '<div class="cbox"><b>Certification:</b>'
         . '<p class="ci"><i>' . $text . '</i></p>'
@@ -665,7 +742,7 @@ function buildCafoaHtml(string $payrollNo): string
         . '<div class="fld"><span class="k">Payee</span><span class="v">' . esc($payee) . '</span></div>'
         . '<table class="al"><tr><th>Function</th><th>Allotment</th><th>Expense Code</th>'
         . '<th>Amount</th></tr>'
-        . '<tr><td>' . esc($h['Function'] ?? '') . '</td><td></td>'
+        . '<tr><td>' . esc($function) . '</td><td>' . CAFOA_ALLOTMENT . '</td>'
         . '<td>' . esc($s['CafoaExpenseCode'] ?? '') . '</td>'
         . '<td style="text-align:right">' . money($net) . '</td></tr>'
         . '<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>'
