@@ -179,6 +179,40 @@ var PAGE_TITLES = {
   backup: 'Backup & Restore'
 };
 
+/**
+ * Pages that show the office watermark behind their content. The working
+ * screens are left clean on purpose: a payroll grid is dense enough without a
+ * seal behind it, and this is the list to add to if that changes.
+ */
+var WATERMARK_PAGES = ['dashboard'];
+
+/**
+ * Applies the uploaded branding to the shell: the logo into the sidebar seal,
+ * the watermark into its layer.
+ *
+ * Both settings are optional and default to empty, so an installation that
+ * has uploaded neither keeps the placeholder icon and a plain background.
+ */
+function applyBranding(settings) {
+  settings = settings || {};
+
+  if (settings.logoUrl) {
+    var seal = document.getElementById('brand-seal');
+    // has-logo swaps the placeholder icon's circle for a larger square frame -
+    // see the note in app.css.
+    seal.classList.add('has-logo');
+    seal.innerHTML = '<img src="' + esc(settings.logoUrl) + '" alt="Office logo">';
+  }
+
+  var mark = document.getElementById('watermark');
+  mark.style.backgroundImage =
+    settings.watermarkUrl ? 'url("' + encodeURI(settings.watermarkUrl) + '")' : '';
+  // The server clamps this to a range that keeps page text readable; the
+  // fallback matches WatermarkOpacity's seeded default.
+  document.body.style.setProperty('--watermark-opacity',
+    String(settings.watermarkOpacity || 0.2));
+}
+
 /** Activates a page and runs its module's init(). */
 function showPage(name) {
   // Navigating away from a dirty full-page editor (payroll grid) confirms first.
@@ -195,6 +229,7 @@ function showPage(name) {
     a.classList.toggle('active', a.dataset.page === name);
   });
   document.getElementById('page-title').textContent = PAGE_TITLES[name] || name;
+  document.body.classList.toggle('watermark-on', WATERMARK_PAGES.indexOf(name) >= 0);
   document.body.classList.remove('sidebar-open');
   if (Pages[name] && Pages[name].init) Pages[name].init();
 }
@@ -287,6 +322,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (s.settings && s.settings.governmentName) {
       document.getElementById('brand-name').textContent = s.settings.governmentName;
     }
+    applyBranding(s.settings);
     if (s.settings && s.settings.theme === 'dark' && !localStorage.getItem('dcpms-theme')) {
       applyTheme('dark');
     }

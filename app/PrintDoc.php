@@ -656,7 +656,28 @@ function buildCafoaHtml(string $payrollNo): string
         $payee = 'Various JO/COS Personnel - ' . ($b['office']['OfficeName'] ?? $h['OfficeCode']);
     }
 
-    $logo = trim((string) ($s['OfficeLogoUrl'] ?? ''));
+    // The printed seal is its own upload; it falls back to the screen logo so
+    // an installation that only ever set one keeps printing what it printed
+    // before PrintLogoUrl existed.
+    $logo = trim((string) ($s['PrintLogoUrl'] ?? ''));
+    if ($logo === '') $logo = trim((string) ($s['OfficeLogoUrl'] ?? ''));
+
+    /**
+     * The seal's frame in the header.
+     *
+     * Wider than tall, with object-fit:contain, so the uploaded file fills the
+     * frame whatever its shape: a square crest is limited by the height and
+     * lands at 62px as before, while a wide logo gets the extra width instead
+     * of being shrunk to fit a square. The height is what sets the header's
+     * height, so it stays at 62px - the rest of the form's vertical geometry is
+     * measured against it.
+     *
+     * SEAL_FRAME_W is used for both the frame and the balancing spacer on the
+     * right; the title only sits centred while those two agree, which is why
+     * it is one value here rather than a literal in three places.
+     */
+    $sealFrame = ['w' => 78, 'h' => 62];
+    $spacer = '<div style="width:' . $sealFrame['w'] . 'px"></div>';
     $deptHead = $b['office']['OfficeHead'] ?? '';
 
     // Function/PPA charged in the allotment table. The payroll header wins:
@@ -695,7 +716,8 @@ function buildCafoaHtml(string $payrollNo): string
         . 'body{font-family:"Times New Roman",serif;font-size:10pt;color:#000;margin:0;}'
         . '.sheet{width:7.3in;margin:0 auto;border:2px solid #000;}'
         . '.head{display:flex;align-items:center;gap:10px;padding:6px 10px;}'
-        . '.head img{width:62px;height:62px;object-fit:contain;}'
+        . '.head img{width:' . $sealFrame['w'] . 'px;height:' . $sealFrame['h']
+        . 'px;object-fit:contain;}'
         . '.head .t{flex:1;text-align:center;font-weight:bold;}'
         . '.head .t .g{font-size:12pt;}'
         . '.head .t .f{font-size:11pt;}'
@@ -730,11 +752,11 @@ function buildCafoaHtml(string $payrollNo): string
         . '</style></head><body><div class="sheet">'
 
         . '<div class="head">'
-        . ($logo !== '' ? '<img src="' . esc($logo) . '" alt="Seal">' : '<div style="width:62px"></div>')
+        . ($logo !== '' ? '<img src="' . esc($logo) . '" alt="Seal">' : $spacer)
         . '<div class="t"><div class="g">' . esc($s['GovernmentName'] ?? 'CITY GOVERNMENT OF DIGOS')
         . '</div><div class="f">CERTIFICATION ON APPROPRIATIONS, FUNDS AND<br>'
         . 'OBLIGATION OF ALLOTMENT</div></div>'
-        . '<div style="width:62px"></div></div>'
+        . $spacer . '</div>'
 
         . '<div class="main"><div class="left">'
         . '<div class="fld"><span class="k">Request</span><span class="v">'

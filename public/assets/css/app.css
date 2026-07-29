@@ -85,6 +85,9 @@ body {
   flex: 1; margin-left: var(--sidebar-w);
   display: flex; flex-direction: column; min-width: 0;
   transition: margin-left .25s ease;
+  /* Owns the background the watermark layer blends against, and isolates so
+     that blending resolves here rather than against the page canvas. */
+  background: var(--bg); isolation: isolate;
 }
 #topbar {
   background: var(--card); border-bottom: 1px solid var(--border);
@@ -93,7 +96,68 @@ body {
 }
 #topbar h5 { margin: 0; font-weight: 700; color: var(--gov-blue); }
 [data-theme="dark"] #topbar h5 { color: #7fa4e8; }
-#page-host { padding: 20px; flex: 1; }
+/* position/z-index put the pages above the watermark layer below. */
+#page-host { padding: 20px; flex: 1; position: relative; z-index: 1; }
+
+/* ---- branding: uploaded logo & page watermark -------------------------- */
+
+/*
+ * An uploaded logo gets a bigger, square frame instead of the placeholder
+ * icon's circle. A circle is right for a single glyph but wrong for a supplied
+ * image: it crops the corners of a square crest, and fitting a square inside a
+ * circle wastes about a third of the width, so the logo lands much smaller
+ * than the space allows. Squaring the frame and dropping the padding lets the
+ * file fill its placement, and object-fit: contain keeps it undistorted
+ * whatever aspect ratio is uploaded - a wide banner letterboxes rather than
+ * being stretched or cropped.
+ */
+#sidebar .brand .seal.has-logo {
+  width: 76px; height: 76px; border-radius: 10px;
+  background: #fff; padding: 3px;
+}
+#sidebar .brand .seal.has-logo img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+}
+
+/*
+ * The watermark is its own fixed layer rather than a background on the page,
+ * for two reasons: it holds still while the dashboard scrolls, and its
+ * opacity is set independently of the content's.
+ *
+ * Readability is why it sits *behind* the cards rather than over them. Every
+ * card is opaque (var(--card)), so no figure, label or table row loses
+ * contrast whatever image is uploaded - the seal reads in the page margins
+ * and the gutters between cards, and the numbers stay exactly as legible as
+ * they are with no watermark at all. WATERMARK_MAX_OPACITY in app/Settings.php
+ * bounds the layer itself for the same reason.
+ */
+#watermark {
+  /* Inset from the content area rather than filling it, so the seal has a
+     margin instead of running into the topbar and the window edges. */
+  position: fixed; inset: 76px 4vw 4vh calc(var(--sidebar-w) + 4vw);
+  background-repeat: no-repeat;
+  background-position: center;
+  /* contain, so the seal is as large as its placement allows whatever shape it
+     is: a square crest ends up limited by height, a wide one by width, and
+     neither is cropped or stretched. */
+  background-size: contain;
+  opacity: 0; transition: opacity .25s ease;
+  pointer-events: none; z-index: 0;
+  /* A seal exported for print is normally dark ink on a solid white
+     background, not a transparent PNG. Multiply drops that white out - white
+     times the backdrop is the backdrop - and darkens only where the crest is,
+     so the page shows a seal rather than the pale box the image came in. A
+     transparent PNG gives the same result, its empty pixels being no-ops. */
+  mix-blend-mode: multiply;
+}
+body.watermark-on #watermark { opacity: var(--watermark-opacity, .2); }
+/* Sidebar collapsed: keep the margin, drop only its width. */
+body.sidebar-hidden #watermark { left: 4vw; }
+
+/* Dark mode needs the opposite: the page behind is near-black, so darkening it
+   further shows nothing. Inverting turns the white background black and the
+   crest light, and screen then drops the black and keeps the light crest. */
+[data-theme="dark"] #watermark { filter: invert(1); mix-blend-mode: screen; }
 
 /* Collapsed / mobile sidebar */
 body.sidebar-hidden #sidebar { transform: translateX(-100%); }
@@ -102,6 +166,7 @@ body.sidebar-hidden #main { margin-left: 0; }
   #sidebar { transform: translateX(-100%); }
   #main { margin-left: 0; }
   body.sidebar-open #sidebar { transform: none; box-shadow: 4px 0 24px rgba(0,0,0,.35); }
+  #watermark { left: 4vw; }
 }
 
 /* ---- cards & tables ---------------------------------------------------- */

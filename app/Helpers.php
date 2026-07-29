@@ -82,6 +82,23 @@ function requireFields(array $p, array $fields): void
     }
 }
 
+/**
+ * A payload reduced to what belongs in the audit log.
+ *
+ * An uploaded image arrives as an inline data: URL, and the log stores the
+ * first 400 characters of the payload - which would be 400 characters of
+ * base64 telling a reviewer nothing, in place of the fields that matter.
+ */
+function auditSummary(array $payload): array
+{
+    foreach ($payload as $key => $value) {
+        if (is_string($value) && str_starts_with($value, 'data:')) {
+            $payload[$key] = '<inline data, ' . strlen($value) . ' bytes>';
+        }
+    }
+    return $payload;
+}
+
 /** Validates an email address shape. */
 function isEmail(mixed $email): bool
 {

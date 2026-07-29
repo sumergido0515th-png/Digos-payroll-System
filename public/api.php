@@ -84,6 +84,7 @@ const ROUTES = [
     // Settings & backup
     'apiGetSettings' => ['settings.view', 'Settings', ''],
     'apiSaveSettings' => ['settings.edit', 'Settings', 'SAVE_SETTINGS'],
+    'apiUploadImageSetting' => ['settings.edit', 'Settings', 'UPLOAD_IMAGE'],
     'apiBackupNow' => ['backup.run', 'Backup', 'BACKUP'],
     'apiListBackups' => ['backup.run', 'Backup', ''],
     'apiRestoreBackup' => ['backup.run', 'Backup', 'RESTORE'],
@@ -111,7 +112,7 @@ try {
     $data = $action($payload, $user);
 
     if ($logAction !== '') {
-        $summary = json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '';
+        $summary = json_encode(auditSummary($payload), JSON_UNESCAPED_UNICODE) ?: '';
         writeLog($user['Email'], $logAction, $module, mb_substr($summary, 0, 400));
     }
     echo json_encode(ok($data));

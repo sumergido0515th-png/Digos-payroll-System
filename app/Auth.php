@@ -160,6 +160,8 @@ function apiGetSession(array $p, array $user): array
             'governmentName' => getSetting('GovernmentName', 'CITY GOVERNMENT OF DIGOS'),
             'subtitle' => getSetting('GovernmentSubtitle', ''),
             'logoUrl' => getSetting('OfficeLogoUrl', ''),
+            'watermarkUrl' => getSetting('WatermarkUrl', ''),
+            'watermarkOpacity' => watermarkOpacity(),
             'theme' => getSetting('SystemTheme', 'light'),
             'maxEmployeesPerPayroll' => (int) num(getSetting('MaxEmployeesPerPayroll', '15')),
             'sessionTimeoutMinutes' => (int) num(getSetting('SessionTimeoutMinutes', '30')),

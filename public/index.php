@@ -35,7 +35,8 @@ if (empty($_SESSION['email'])) {
   <!-- ==================== SIDEBAR ==================== -->
   <aside id="sidebar">
     <div class="brand">
-      <div class="seal"><span class="material-icons">account_balance</span></div>
+      <!-- The icon is the fallback; app.js swaps in the uploaded office logo. -->
+      <div class="seal" id="brand-seal"><span class="material-icons">account_balance</span></div>
       <h6 id="brand-name">DIGOS CITY GOVERNMENT</h6>
       <small>Employee Payroll Management System<br>Job Order &bull; Contract of Service</small>
     </div>
@@ -65,6 +66,10 @@ if (empty($_SESSION['email'])) {
 
   <!-- ==================== MAIN ==================== -->
   <div id="main">
+    <!-- Watermark layer. Sits behind the content; app.js fills in the image
+         and reveals it only on the pages that ask for it. -->
+    <div id="watermark" aria-hidden="true"></div>
+
     <header id="topbar">
       <button class="btn btn-sm btn-outline-secondary" id="btn-sidebar">
         <span class="material-icons" style="font-size:18px;vertical-align:-4px">menu</span>

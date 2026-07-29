@@ -51,6 +51,18 @@ defined('APP_TIMEZONE') || define('APP_TIMEZONE', 'Asia/Manila');
 /** Directory where SQL backups are written (outside the web root). */
 define('BACKUP_DIR', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'backups');
 
+/**
+ * Where uploaded branding images (office logo, page watermark) are stored.
+ * Unlike backups this is inside the web root, because the browser and the
+ * print view fetch it directly by URL. Only files whose extension this
+ * application generates itself ever land here - see apiUploadImageSetting().
+ */
+define('UPLOAD_DIR', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'public'
+    . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'uploads');
+
+/** The URL that maps to UPLOAD_DIR, relative to the pages in public/. */
+define('UPLOAD_URL', 'assets/uploads');
+
 // --- Mail (payslips) --------------------------------------------------------
 /** From-address used by mail(); configure SMTP in php.ini for delivery. */
 defined('MAIL_FROM') || define('MAIL_FROM', 'payroll@digoscity.gov.ph');
