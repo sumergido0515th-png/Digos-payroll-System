@@ -54,8 +54,19 @@ One-time cost. Skipping this causes guessing in every later phase, which compoun
 
 ## Phase 1 — Core Data Model
 
-**Status:** IN PROGRESS — started 2026-07-28
+**Status:** IN PROGRESS — started 2026-07-28; deliverable complete 2026-07-28, **awaiting sign-off**
 **Depends on:** Phase 0
+**Delivered:** [SCHEMA.md](SCHEMA.md) + migrations `0003`–`0009` (commit `75ae428`). Exit gate is half met — see the two open items below.
+
+> **Two things block this phase from closing, both yours to decide:**
+>
+> 1. **Sign-off on the schema** — the second half of the exit gate, never delegated.
+> 2. **The Tier 1 / Tier 2 employee split is deliberately not migrated.** It is *classified*
+>    in SCHEMA.md and lands as Phase 2's first migration instead, atomically with the gateway
+>    that enforces it. Moving those columns now breaks every reader (`SELECT *` in
+>    `app/Master.php`) and buys nothing until that gateway exists. This is a deviation from
+>    the task list below and needs explicit acceptance — see
+>    [SCHEMA.md § Employee tiers](SCHEMA.md#employee-tiers).
 
 ### Objective
 Freeze the schema that every other phase builds on.
@@ -298,6 +309,15 @@ Make the print action provably tied to what was audited.
 - Generate Notice of Suspension slip (per suspension) and Settlement report
 - Footer/watermark: office code, function code, user, timestamp on every printed page
 
+> **Name collision — read this before grepping for "watermark".** In this phase the word
+> means the *DRAFT / non-official* overlay on a printed page, and the per-page footer stamp
+> above. It is unrelated to the `WatermarkUrl` / `WatermarkOpacity` settings and the
+> `#watermark` CSS layer added out of sequence on 2026-07-29, which are decorative office
+> branding on the **dashboard and sign-in screens only** and never reach print output.
+> Phase 8 must not reuse those settings for the draft overlay: a decorative seal an
+> administrator can blank out is the wrong mechanism for a control asserting that a page is
+> not official.
+
 ### Deliverable
 Print gating logic + three print artifacts (Certification sheet, NS slip, Settlement report)
 
@@ -373,7 +393,12 @@ One live payroll period processed end-to-end with zero manual override needed.
 
 *Log new ideas here during active phase work instead of injecting them mid-phase. Triage into a phase at the next planning checkpoint.*
 
-- (none logged yet)
+- **Assign every office a real Function/PPA code.** Three of three offices, payrolls and payroll lines carry `FunctionCode = NULL` after the `0004`/`0006` backfills, because two offices store `9999` — neither a code nor a name. This is data entry, not code, and it is a **prerequisite for Phase 6's CAFOA rules to mean anything**: a rule that checks the charged appropriation has nothing to check. See [SCHEMA.md § Known-unresolved data](SCHEMA.md#known-unresolved-data-surfaced-by-the-backfills).
+- **Two of three existing payrolls were self-approved** (`PreparedByUser == ApprovedByUser`, visible for the first time since `0007`). Phase 2 prohibits this going forward; nothing in the plan says what happens to the rows that already exist. Decide whether they are grandfathered or re-approved before Phase 7 builds the workflow over them.
+- **MariaDB 10.4 → 10.11 LTS upgrade.** `GAP_MAP` finding 6: 10.4 has been end of life since June 2024, CI already proves both versions, and the gap map argued it was cheapest *before* Phase 1 froze the schema. That window has now closed — re-cost it rather than assume it is still cheap.
+- **`Contracts` needs its own module with supersession semantics**, before Phase 6's "daily rate ≠ contract rate" rule needs it. Decided 2026-07-29: employee save deliberately does *not* create contract rows, because mirroring the employee form's single start/end pair would overwrite exactly the rate history `0005` was created to preserve. One of three employees has no contract row until this lands. Candidate for Phase 3.
+- **No guard stops a new nullable column from never being written.** The Phase 1 columns sat unwritten by `app/` for a day before anyone measured it (see [SCHEMA.md](SCHEMA.md#the-backfills-were-not-enough--the-write-paths-were-never-wired)). An architecture test asserting that every column a migration adds is referenced somewhere in `app/` would have caught it the same day.
+- **Branding is unenforced by any guard.** `IMAGE_SETTINGS` in `app/Settings.php` is an allowlist of settings that accept an upload; nothing fails if a future setting is added to the form but not to that list. Consider an architecture test if the list grows past the current two.
 
 ---
 
@@ -388,3 +413,7 @@ One live payroll period processed end-to-end with zero manual override needed.
 | 2026-07-27 | Phase 0 audit raised three revisions to this plan. **All three settled 2026-07-28** — see the entry below |
 | 2026-07-28 | **The three Phase 0 revisions are settled, all as proposed.** (1) *Day-level DTR* — accepted: Phase 1 adds a per-employee-per-date `DtrDays` table, and a new **Phase 3B** builds capture on top of it before Phase 4. Phases 4, 5 and 6 all compute per date and have no input without it. (2) *`PreparedBy`* — accepted: Phase 1 adds `Payroll.PreparedByUser` as a real foreign key to `Users`, keeping the existing display-name string for the printed form, which must show the name as rendered at the time. Phase 2's segregation-of-duties check reads the key, never the string. (3) *Postgres RLS* — accepted: removed from Phase 2. MariaDB has no row-level security, so the application-gateway path is the only path, and it is now stated as such rather than as one of two options |
 | 2026-07-28 | Removed two stale assumptions that contradicted the repository: Phase 2's Postgres/Apps Script enforcement fork, and Phase 10's "moving off Sheets". This system is PHP + MariaDB and always has been in this repo; the references predate it and would have sent a session designing against the wrong platform |
+| 2026-07-28 | **Phase 1 deliverable landed** (commit `75ae428`): `SCHEMA.md` and migrations `0003`–`0009`. Recorded here on 2026-07-29 — the commit updated neither this plan nor `GAP_MAP.md`, so for a day the plan showed a phase in progress whose deliverable was already complete. **Phase 1 is still open:** the exit gate's second half is your sign-off, and the Tier 1 / Tier 2 split was deliberately deferred to Phase 2's first migration rather than built here |
+| 2026-07-29 | **Branding images added out of sequence** (migration `0010`, settings `WatermarkUrl` / `WatermarkOpacity`, endpoint `apiUploadImageSetting`): an uploadable office logo for the sidebar, sign-in page and printed seal, plus a decorative watermark behind the dashboard and sign-in screens. Requested directly, built during Phase 1, and belonging to no phase — the same shape as `Employees.CashCard` at `0002`. It touches no payroll data, no schema beyond two `Settings` rows, and no phase's exit gate. **Phase 8 owns a different, unrelated "watermark"** — the disambiguation note now sits in that phase |
+| 2026-07-29 | **Phase 1 verified against the live database, and a defect found and fixed: the migrations froze the model but nothing in `app/` ever wrote the new columns.** Every employee and payroll created through the UI after `0003`/`0007` arrived with `EmploymentTypeCode`, `PreparedByUser`, `ApprovedByUser` and the line-charging columns empty — one employee and three payrolls by the time it was measured. Phase 2's segregation-of-duties check would have read NULL on any payroll made through the UI. Write paths corrected in `Master.php` and `Payroll.php`; migration `0013` backfills the rows written while the gap was open; per-line charging now defaults from the payroll header. `Contracts` deferred to its own module by decision, not oversight |
+| 2026-07-29 | Plan revalidated against the repository. Backlog populated for the first time (it read "none logged yet" while four items were outstanding, three of them surfaced by Phase 1's own backfills). `GAP_MAP.md` findings 1 and 2 are now resolved by migrations `0008` and `0007` but still read as open in that file — **not corrected here**, since amending the Phase 0 audit record is a separate decision |
