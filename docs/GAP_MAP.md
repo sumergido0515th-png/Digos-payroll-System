@@ -157,12 +157,18 @@ Baseline schema preserved verbatim at [`migrations/0001_baseline_schema.sql`](..
 
 ## Findings that change the plan
 
-1. **Day-level DTR does not exist** and Phases 4, 5 and 6 cannot be built without it. Needs a Phase 1 schema addition and a build phase before Phase 4.
-2. **`PreparedBy` is a display-name string**, so the Phase 2 segregation-of-duties check needs a Phase 1 schema change first.
-3. **Postgres RLS is not available** on MySQL; Phase 2 must use the application-gateway path, which requires confining database access to a repository layer (guard now in place).
-4. **Tier 2 employee data is exposed to every role today** — worth fixing ahead of the full Phase 1 tier split.
-5. **The 15-line batch cap is load-bearing for the printed form**, and interacts with Phase 7's employee-scoped suspensions.
-6. **The deployed database is MariaDB 10.4, which is end of life.** Phase 1 writes the schema that everything else builds on, so the upgrade to 10.11 LTS is cheapest *before* that work, not after. CI already proves both versions.
+*Status column added 2026-07-29, after Phase 1 delivered. This section is the Phase 0 audit
+record; the findings themselves are left as written, with what has since happened noted
+against each. Where a finding is closed, the closure is the migration, **not** this note.*
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | **Day-level DTR does not exist** and Phases 4, 5 and 6 cannot be built without it. Needs a Phase 1 schema addition and a build phase before Phase 4. | **Half closed.** `DtrDays` exists (`0008`). The table is empty and stays so until Phase 3B builds capture — the schema half is done, the input half is not. |
+| 2 | **`PreparedBy` is a display-name string**, so the Phase 2 segregation-of-duties check needs a Phase 1 schema change first. | **Closed.** `Payroll.PreparedByUser` / `ApprovedByUser` are real foreign keys to `Users` (`0007`), and `apiSavePayroll` / `payrollTransition` now write them. The check became possible *and* immediately showed three of five payrolls self-approved. |
+| 3 | **Postgres RLS is not available** on MySQL; Phase 2 must use the application-gateway path, which requires confining database access to a repository layer (guard now in place). | Open, by design. This is Phase 2's whole job. |
+| 4 | **Tier 2 employee data is exposed to every role today** — worth fixing ahead of the full Phase 1 tier split. | **Open, and deliberately so.** Phase 1 classified the tiers in [SCHEMA.md](SCHEMA.md#employee-tiers) but did not physically split them; the split lands as Phase 2's first migration, atomically with the gateway that enforces it. Until then every role holding `employee.view` still reads Tier 2. |
+| 5 | **The 15-line batch cap is load-bearing for the printed form**, and interacts with Phase 7's employee-scoped suspensions. | Open. Untouched by Phase 1. |
+| 6 | **The deployed database is MariaDB 10.4, which is end of life.** Phase 1 writes the schema that everything else builds on, so the upgrade to 10.11 LTS is cheapest *before* that work, not after. CI already proves both versions. | **Open, and the cheap window has closed.** The schema froze on 10.4. Re-cost the upgrade rather than assuming the Phase 0 estimate still holds. |
 
 ## Resolved during Phase 0
 

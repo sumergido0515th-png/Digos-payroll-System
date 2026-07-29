@@ -28,6 +28,34 @@ should read that file instead of re-reading the repository.
 
 ---
 
+## What Phase 1 actually cost
+
+| | |
+|---|---|
+| Migrations written (`0003`–`0009`, `0013`) | 481 lines |
+| `SCHEMA.md` | 230 lines |
+| Application code changed to write the new model | ~40 lines across 2 files |
+| Commits | 2 (`75ae428` schema, `60c2e65` write paths) |
+| Verification cycles against a live database | ~10 |
+
+**Roughly 2 units — inside the 2–3 estimate**, and the checkpoint below is therefore not
+triggered. The estimate's shape was right too: low code volume, high review density.
+
+Two things cost more than the estimate anticipated, and both are worth carrying forward:
+
+1. **The collation trap.** Three databases had to be migrated to find that hardcoding
+   `utf8mb4_unicode_ci` works on a copy of live data and fails on a fresh install. That was
+   not schema design — it was environment variance, and no amount of care at the design
+   stage would have surfaced it. Budget verification cycles against *more than one*
+   database for any phase that writes DDL.
+2. **The write paths were forgotten entirely.** The migrations froze the model and nothing
+   wrote to it; it took a separate measuring pass a day later to notice. This was free to
+   fix at ~40 lines and would have been expensive to discover in Phase 2, where the
+   segregation-of-duties check reads a column that would have been NULL. **A migration is
+   not finished when it applies cleanly — it is finished when something writes the column.**
+
+---
+
 ## Relative cost per phase
 
 Sized from the gap map: how much is `build new`, how much existing code must be understood
@@ -36,7 +64,7 @@ first, and how much iteration the exit gate demands.
 | Phase | Units | Driver |
 |---|---|---|
 | 0 — Audit & baseline | 1 | **done** |
-| 1 — Core data model | 2–3 | Schema + migrations + data-migration from the baseline. High review density, low code volume. Sign-off loop is the variable. |
+| 1 — Core data model | 2–3 | **~2 spent, inside estimate.** Schema + migrations + data-migration from the baseline. High review density, low code volume. Sign-off loop is still the open variable. |
 | 2 — Auth & scope | 3–4 | Touches every existing module. The seven files on the `DB::` allowlist each need moving behind the repository layer. |
 | 3 — Document CRUD | 2–3 | Four near-identical modules. High volume, low difficulty — the cheapest per line in the plan. |
 | **3B — DTR & biometric ingest** | 2–3 | **Not in the original plan.** Blocks 4, 5 and 6. |

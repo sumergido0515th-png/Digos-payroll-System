@@ -58,15 +58,11 @@ One-time cost. Skipping this causes guessing in every later phase, which compoun
 **Depends on:** Phase 0
 **Delivered:** [SCHEMA.md](SCHEMA.md) + migrations `0003`–`0009` (commit `75ae428`). Exit gate is half met — see the two open items below.
 
-> **Two things block this phase from closing, both yours to decide:**
->
-> 1. **Sign-off on the schema** — the second half of the exit gate, never delegated.
-> 2. **The Tier 1 / Tier 2 employee split is deliberately not migrated.** It is *classified*
->    in SCHEMA.md and lands as Phase 2's first migration instead, atomically with the gateway
->    that enforces it. Moving those columns now breaks every reader (`SELECT *` in
->    `app/Master.php`) and buys nothing until that gateway exists. This is a deviation from
->    the task list below and needs explicit acceptance — see
->    [SCHEMA.md § Employee tiers](SCHEMA.md#employee-tiers).
+> **This phase is blocked on your sign-off — four decisions, laid out with a recommendation
+> each in [PHASE_1_SIGNOFF.md](PHASE_1_SIGNOFF.md).** In short: the Tier 1 / Tier 2 split
+> deferred to Phase 2's first migration, what to do about three existing self-approved
+> payrolls, the `Contracts` module deferred to Phase 3, and the Function/PPA codes that only
+> you can enter. The last one blocks Phase 6, not just this phase.
 
 ### Objective
 Freeze the schema that every other phase builds on.
