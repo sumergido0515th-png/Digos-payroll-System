@@ -286,14 +286,24 @@ function audit(string $out): void
     say('');
     say('  audit          no credentials, no dumps, every private directory denied');
 
-    // dist/config.local.php is the file you upload to the server by hand, so it
-    // is meant to exist and meant to hold real credentials. Say so out loud
-    // anyway: it is the one thing in dist/ that must not be included if the
-    // directory is ever zipped or shared, and silence there is how it gets
-    // forgotten.
-    if (is_file(PROJECT . '/dist/config.local.php')) {
-        say('  note           dist/config.local.php holds live credentials - upload it,');
-        say('                 do not include it in anything you send anywhere else');
+    // dist/config.local.php is the file you upload to become the server's
+    // app/config.local.php. Report which of the two states it is in, because
+    // they need opposite handling and telling them apart by eye means opening
+    // the file: a filled-in password is the one thing in dist/ that must not
+    // travel with anything else, and a blank one is a site that will not
+    // connect until somebody types it in on the server.
+    $staged = PROJECT . '/dist/config.local.php';
+    if (is_file($staged)) {
+        $hasPassword = preg_match('/define\(\s*[\'"]DB_PASS[\'"]\s*,\s*[\'"][^\'"]+[\'"]/',
+            (string) file_get_contents($staged)) === 1;
+
+        if ($hasPassword) {
+            say('  note           dist/config.local.php has a password in it - upload it,');
+            say('                 do not include it in anything you send anywhere else');
+        } else {
+            say('  note           dist/config.local.php has no password - set DB_PASS on the');
+            say('                 server after uploading, or the site cannot reach its database');
+        }
     }
 }
 
