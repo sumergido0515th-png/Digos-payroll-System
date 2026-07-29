@@ -246,7 +246,6 @@ function audit(string $out): void
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($out, FilesystemIterator::SKIP_DOTS));
 
-    $sensitive = 0;
     foreach ($iterator as $file) {
         $name = $file->getFilename();
         $relative = str_replace('\\', '/', substr($file->getPathname(), strlen($out) + 1));
@@ -256,7 +255,15 @@ function audit(string $out): void
             $problems[] = "database dump included: $relative";
         }
         if (preg_match('/PayrollDB_Backup_/', $name)) $problems[] = "backup included: $relative";
-        $sensitive++;
+
+        // Filenames are the easy half. A password pasted into app/config.php
+        // ships under a name nothing here would flag, and config.php is
+        // tracked - so this is also the check that stops one reaching GitHub.
+        if (str_ends_with($name, '.php')) {
+            foreach (hardcodedSecrets((string) file_get_contents($file->getPathname())) as $what) {
+                $problems[] = "$what in $relative";
+            }
+        }
     }
 
     // Every directory that is not public/ must carry a deny rule.
@@ -267,6 +274,8 @@ function audit(string $out): void
     }
     if (!is_file("$out/.htaccess")) $problems[] = 'root .htaccess missing';
 
+    $problems = array_merge($problems, stagingProblems());
+
     if ($problems) {
         removeTree($out);
         throw new RuntimeException(
@@ -276,6 +285,75 @@ function audit(string $out): void
 
     say('');
     say('  audit          no credentials, no dumps, every private directory denied');
+
+    // dist/config.local.php is the file you upload to the server by hand, so it
+    // is meant to exist and meant to hold real credentials. Say so out loud
+    // anyway: it is the one thing in dist/ that must not be included if the
+    // directory is ever zipped or shared, and silence there is how it gets
+    // forgotten.
+    if (is_file(PROJECT . '/dist/config.local.php')) {
+        say('  note           dist/config.local.php holds live credentials - upload it,');
+        say('                 do not include it in anything you send anywhere else');
+    }
+}
+
+/**
+ * Problems in dist/ itself, outside the package.
+ *
+ * The package is not the only thing the build leaves behind, and dist/ is what
+ * actually gets opened, zipped or handed to somebody. A database dump sitting
+ * beside the schema is every employee's TIN, rate and address in plain text -
+ * git ignores dist/, so nothing else is watching that directory at all.
+ *
+ * @return string[]
+ */
+function stagingProblems(): array
+{
+    $dist = PROJECT . '/dist';
+    if (!is_dir($dist)) return [];
+
+    $problems = [];
+    foreach (scandir($dist) ?: [] as $entry) {
+        if ($entry === '.' || $entry === '..' || is_dir("$dist/$entry")) continue;
+
+        if (preg_match('/PayrollDB_Backup_/', $entry) || str_ends_with($entry, '.sql.gz')) {
+            $problems[] = "database dump left in dist/: $entry";
+        }
+    }
+
+    return $problems;
+}
+
+/**
+ * Password constants with a real value in them.
+ *
+ * Passwords only. app/config.php deliberately defaults DB_USER to 'root' for a
+ * fresh XAMPP install, and a username is not a secret - flagging it would make
+ * the audit fail on a correct tracked file, and an audit that cries wolf gets
+ * switched off. The rule being enforced is the one in CLAUDE.md: never put a
+ * real password in app/config.php.
+ *
+ * Matches only a non-empty literal, since config.php defines DB_PASS empty as
+ * its fallback. Interpolation or a value read from elsewhere is not caught -
+ * this is a backstop against the obvious mistake, not a secret scanner.
+ *
+ * @return string[]
+ */
+function hardcodedSecrets(string $php): array
+{
+    $found = [];
+
+    foreach (['DB_PASS', 'DB_MIGRATE_PASS'] as $constant) {
+        $pattern = "/define\(\s*['\"]" . $constant . "['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)/";
+        if (!preg_match($pattern, $php, $m)) continue;
+
+        // The example template ships placeholders on purpose.
+        if (preg_match('/^(CHANGE_?ME|XXX|placeholder|your[-_ ]?)/i', $m[1])) continue;
+
+        $found[] = "hardcoded $constant";
+    }
+
+    return $found;
 }
 
 /** @return int files copied */
