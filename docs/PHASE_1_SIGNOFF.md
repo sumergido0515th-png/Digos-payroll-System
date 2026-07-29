@@ -104,16 +104,23 @@ The backfills refused to guess: two offices store `9999`, which is neither a cod
 name, and one is empty. A wrong function prints an amount under an appropriation it was
 never charged to, so NULL — visible at sign-off — was chosen over a plausible guess.
 
-The application now defaults a payroll's function from its charged office, so **this fixes
-itself for new payrolls the moment the offices have real codes.** Until then it cannot:
-there is nothing to copy.
+**This was not possible through the UI until now.** `apiSaveOffice` wrote the function
+*display string* and never `FunctionCode`, so the column could only ever be set by the
+`0004` backfill — an office created afterwards had no chargeable function and no way to be
+given one. That is fixed: **Departments & Offices → edit an office → "Function / PPA
+charged"**, a dropdown of the real `Functions` rows. A free-text box would only have traded
+the problem for a foreign-key error on a typo.
+
+The application defaults a payroll's function from its charged office, so **this fixes
+itself for every new payroll the moment the offices carry real codes.**
 
 **This blocks Phase 6.** Its CAFOA rules check the charged appropriation; with every
 function NULL they have nothing to check and would pass vacuously.
 
-> **Required from you: assign each office its real Function/PPA code** in
-> Departments & Offices. Four rows. This is the one item on this page that no amount of
-> code can resolve.
+> **Required from you: set the Function/PPA on each of the four offices.** Four dropdown
+> selections. This is the one item on this page that no amount of code can resolve — the
+> code to make it possible is now in place, but which appropriation an office charges to is
+> a fact only you hold.
 
 ---
 

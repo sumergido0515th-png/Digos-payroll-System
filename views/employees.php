@@ -321,21 +321,25 @@ Pages.departments = (function () {
       cols: ['OfficeCode', 'OfficeName', 'Department', 'Division', 'Function', 'OfficeHead'],
       fields: [['OfficeCode', 'Office Code *'], ['OfficeName', 'Office Name *'],
         ['Department', 'Department'], ['Division', 'Division'],
-        ['Function', 'Function'], ['OfficeHead', 'Office Head']]
+        ['Function', 'Function'], ['OfficeHead', 'Office Head'],
+        ['FunctionCode', 'Function / PPA charged', 'functions', 'FunctionCode', 'FunctionName'],
+        ['ParentOfficeCode', 'Parent Office', 'offices', 'OfficeCode', 'OfficeName']]
     },
     departments: {
       head: ['Code', 'Department Name', 'Office', 'Head', 'Status', ''],
       list: 'apiListDepartments', save: 'apiSaveDepartment', del: 'apiDeleteDepartment', key: 'DeptCode',
       cols: ['DeptCode', 'DeptName', 'OfficeCode', 'Head'],
       fields: [['DeptCode', 'Department Code *'], ['DeptName', 'Department Name *'],
-        ['OfficeCode', 'Office Code'], ['Head', 'Department Head']]
+        ['OfficeCode', 'Office Code'], ['Head', 'Department Head'],
+        ['ParentDeptCode', 'Parent Department', 'departments', 'DeptCode', 'DeptName']]
     },
     functions: {
       head: ['Code', 'Function Name', 'Description', 'Status', ''],
       list: 'apiListFunctions', save: 'apiSaveFunction', del: 'apiDeleteFunction', key: 'FunctionCode',
       cols: ['FunctionCode', 'FunctionName', 'Description'],
       fields: [['FunctionCode', 'Function Code *'], ['FunctionName', 'Function Name *'],
-        ['Description', 'Description']]
+        ['Description', 'Description'],
+        ['OwningOfficeCode', 'Owning Office', 'offices', 'OfficeCode', 'OfficeName']]
     }
   };
 
@@ -364,6 +368,16 @@ Pages.departments = (function () {
     openModal((rec[c.key] ? 'Edit ' : 'New ') + tab.replace(/s$/, ''),
       '<form id="org-form" class="row g-2">' +
       c.fields.map(function (f) {
+        // f[2] names a lookup: render a picker instead of a text box. These
+        // fields are foreign keys, and a typed code that matches no row is a
+        // constraint violation the user cannot act on - "-- none --" is the
+        // only way to clear one.
+        if (f[2]) {
+          var lk = App.lookups[f[2]] || [];
+          return '<div class="col-md-6"><label class="form-label">' + f[1] + '</label>' +
+            '<select class="form-select form-select-sm" name="' + f[0] + '">' +
+            options(lk, f[3], f[4], rec[f[0]] || '', '-- none --') + '</select></div>';
+        }
         return '<div class="col-md-6"><label class="form-label">' + f[1] + '</label>' +
           '<input class="form-control form-control-sm" name="' + f[0] +
           '" value="' + esc(rec[f[0]] || '') + '"></div>';

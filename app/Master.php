@@ -212,9 +212,19 @@ function apiSaveOffice(array $p, array $user): array
         'Department' => $p['Department'] ?? '',
         'Division' => $p['Division'] ?? '',
         'FunctionName' => $p['Function'] ?? '',
+        // The Function/PPA the office charges to, as the key rather than the
+        // display string. Until this was written the column could only ever be
+        // set by the 0004 backfill, so an office created afterwards had no
+        // chargeable function at all - and Phase 6's CAFOA rules check exactly
+        // this. NULL rather than '' because it is a foreign key to Functions.
+        'FunctionCode' => ($p['FunctionCode'] ?? '') ?: null,
+        'ParentOfficeCode' => ($p['ParentOfficeCode'] ?? '') ?: null,
         'OfficeHead' => $p['OfficeHead'] ?? '',
         'Status' => $p['Status'] ?? 'Active',
     ];
+    if (($record['ParentOfficeCode'] ?? null) === $code) {
+        throw new RuntimeException('An office cannot be its own parent office.');
+    }
     if (DB::row('SELECT OfficeCode FROM Offices WHERE OfficeCode = ?', [$code])) {
         DB::update('Offices', $record, 'OfficeCode', $code);
         return ['updated' => true, 'OfficeCode' => $code];
@@ -249,9 +259,13 @@ function apiSaveDepartment(array $p, array $user): array
     $record = [
         'DeptName' => $p['DeptName'],
         'OfficeCode' => $p['OfficeCode'] ?? '',
+        'ParentDeptCode' => ($p['ParentDeptCode'] ?? '') ?: null,
         'Head' => $p['Head'] ?? '',
         'Status' => $p['Status'] ?? 'Active',
     ];
+    if ($record['ParentDeptCode'] === $code) {
+        throw new RuntimeException('A department cannot be its own parent department.');
+    }
     if (DB::row('SELECT DeptCode FROM Departments WHERE DeptCode = ?', [$code])) {
         DB::update('Departments', $record, 'DeptCode', $code);
         return ['updated' => true];
@@ -284,6 +298,7 @@ function apiSaveFunction(array $p, array $user): array
     $record = [
         'FunctionName' => $p['FunctionName'],
         'Description' => $p['Description'] ?? '',
+        'OwningOfficeCode' => ($p['OwningOfficeCode'] ?? '') ?: null,
         'Status' => $p['Status'] ?? 'Active',
     ];
     if (DB::row('SELECT FunctionCode FROM Functions WHERE FunctionCode = ?', [$code])) {
