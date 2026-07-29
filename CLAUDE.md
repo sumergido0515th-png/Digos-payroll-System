@@ -24,6 +24,12 @@ php tools/migrate.php --dry-run             show what would run
 
 Integration tests need `DB_NAME` pointing at a database whose name contains `test`;
 `TestDatabase` refuses anything else so the suite can never touch live payroll data.
+`phpunit.xml` defaults it to `digos_payroll_test`, so the full suite runs as written above —
+without that default it fell back to the working database and the guard turned all nine
+integration tests into errors — which is how they sat unrun from the day they were written
+(2026-07-27) until 2026-07-29. Create
+the database and migrate it with `DB_NAME=digos_payroll_test php tools/migrate.php`. An
+absent or unreachable test database is a skip, not a failure.
 
 ## Architecture
 

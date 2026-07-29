@@ -83,7 +83,12 @@ function apiSaveEmployee(array $p, array $user): array
         'CashCard' => $p['CashCard'] ?? '',
         'LastName' => $p['LastName'], 'FirstName' => $p['FirstName'],
         'MiddleName' => $p['MiddleName'] ?? '', 'Suffix' => $p['Suffix'] ?? '',
-        'Birthdate' => $p['Birthdate'] ?: null, 'Gender' => $p['Gender'] ?? '',
+        // The date fields take `?? '' ?:` rather than a bare `?:` so that an
+        // omitted key and an empty string both become NULL. A DATE column
+        // rejects '' under STRICT_ALL_TABLES, and every caller other than the
+        // SPA - a test, a tool, a future import - is entitled to leave an
+        // optional field out entirely rather than send it blank.
+        'Birthdate' => ($p['Birthdate'] ?? '') ?: null, 'Gender' => $p['Gender'] ?? '',
         'Address' => $p['Address'] ?? '', 'Contact' => $p['Contact'] ?? '',
         'Email' => $p['Email'] ?? '',
         'OfficeCode' => $p['OfficeCode'], 'Department' => $p['Department'] ?? '',
@@ -93,9 +98,9 @@ function apiSaveEmployee(array $p, array $user): array
         'Position' => $p['Position'],
         'SalaryRate' => $rates['salaryRate'], 'DailyRate' => $rates['dailyRate'],
         'HourlyRate' => $rates['hourlyRate'], 'MonthlyRate' => $rates['monthlyRate'],
-        'DateHired' => $p['DateHired'] ?: null,
-        'ContractStart' => $p['ContractStart'] ?: null,
-        'ContractEnd' => $p['ContractEnd'] ?: null,
+        'DateHired' => ($p['DateHired'] ?? '') ?: null,
+        'ContractStart' => ($p['ContractStart'] ?? '') ?: null,
+        'ContractEnd' => ($p['ContractEnd'] ?? '') ?: null,
         'Status' => $p['Status'] ?? 'Active',
         'PhotoURL' => $p['PhotoURL'] ?? '', 'SignatureURL' => $p['SignatureURL'] ?? '',
         'Remarks' => $p['Remarks'] ?? '',

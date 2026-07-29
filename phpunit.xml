@@ -8,6 +8,23 @@
          failOnRisky="true"
          beStrictAboutOutputDuringTests="true">
 
+  <!--
+    Default target for the integration suite.
+
+    TestDatabase reads the environment before app/config.php, and it refuses any
+    database whose name lacks a "test" marker so a mis-set DB_NAME can never
+    truncate live payroll data. Without this default it fell back to DB_NAME
+    from config.php - the working database - and the guard turned all nine
+    integration tests into errors, so in practice they never ran at all.
+
+    An absent or unreachable database is still a skip, not a failure: a
+    developer with no MySQL running can work on the unit suite. Override with
+    `DB_NAME=... vendor/bin/phpunit` to point at a different test database.
+  -->
+  <php>
+    <env name="DB_NAME" value="digos_payroll_test"/>
+  </php>
+
   <testsuites>
     <!-- Pure logic + repo-structure guards. No database, no network. Always runnable. -->
     <testsuite name="architecture">
