@@ -125,6 +125,42 @@ Phase 1 **classifies**; Phase 2 **separates**. The classification is frozen here
 
 ---
 
+## The backfills were not enough — the write paths were never wired
+
+*Added 2026-07-29, after measuring the delivered schema against the live database.*
+
+`0003` and `0007` filled the rows that existed when they ran. Nothing in `app/` then wrote
+the new columns, so **every record created through the UI afterwards arrived with them
+empty** — by the time this was measured, one employee had no `EmploymentTypeCode` and three
+payrolls had no `PreparedByUser`. The frozen model was decaying with each new record, and
+silently: nothing fails when a nullable column stays null.
+
+This mattered most for `PreparedByUser`. Phase 2's segregation-of-duties check reads it, and
+on a payroll created through the UI it would have found NULL — a check that cannot tell
+preparer from approver either passes everything or blocks everything.
+
+Fixed in the same change as this note:
+
+| Column | Now written by |
+|---|---|
+| `Employees.EmploymentTypeCode` | `apiSaveEmployee()` via `employmentTypeCode()` in [Master.php](../app/Master.php) |
+| `Payroll.PreparedByUser` | `apiSavePayroll()` |
+| `Payroll.ApprovedByUser` | `payrollTransition()`, on the move to Approved |
+| `Payroll.FunctionCode` | `apiSavePayroll()`, from the charged office |
+| `PayrollDetails.ChargedOfficeCode`, `.FunctionCode` | `apiSavePayroll()`, defaulted from the payroll header |
+
+`migrations/0013_backfill_rows_written_after_phase1.sql` cleans up the rows written while the
+gap was open. **If a later audit finds these columns NULL again, the write path has
+regressed — do not simply write another backfill.**
+
+`Contracts` is the deliberate exception. Employee save still creates no contract row, because
+`0005` exists to preserve rate history and mirroring the employee form's single start/end
+pair on every save is precisely the overwrite it was built to prevent. Contracts gets its own
+module with supersession semantics before Phase 6 needs it; one of three employees has no
+contract row until then.
+
+---
+
 ## Known-unresolved data, surfaced by the backfills
 
 Measured against a copy of the live database:

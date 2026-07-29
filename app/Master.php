@@ -88,7 +88,9 @@ function apiSaveEmployee(array $p, array $user): array
         'Email' => $p['Email'] ?? '',
         'OfficeCode' => $p['OfficeCode'], 'Department' => $p['Department'] ?? '',
         'Division' => $p['Division'] ?? '', 'FunctionName' => $p['Function'] ?? '',
-        'EmploymentType' => $p['EmploymentType'], 'Position' => $p['Position'],
+        'EmploymentType' => $p['EmploymentType'],
+        'EmploymentTypeCode' => employmentTypeCode($p['EmploymentType']),
+        'Position' => $p['Position'],
         'SalaryRate' => $rates['salaryRate'], 'DailyRate' => $rates['dailyRate'],
         'HourlyRate' => $rates['hourlyRate'], 'MonthlyRate' => $rates['monthlyRate'],
         'DateHired' => $p['DateHired'] ?: null,
@@ -122,6 +124,29 @@ function apiDeleteEmployee(array $p, array $user): array
             . 'Set the status to Inactive instead.');
     }
     return ['deleted' => DB::exec('DELETE FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']])];
+}
+
+/**
+ * Maps the free-text `EmploymentType` the form posts onto the `EmploymentTypes`
+ * key, or null when it matches nothing known.
+ *
+ * Both columns are written on save. `EmploymentType` stays because the printed
+ * form and the SPA read it; `EmploymentTypeCode` is what Phase 4's resolvers
+ * branch on, and they receive the `EmploymentTypes` row rather than comparing
+ * type names, which is only possible if the key is populated.
+ *
+ * The mapping is deliberately identical to the backfill in
+ * `migrations/0003_employment_types.sql`. If one changes the other must too, or
+ * rows created before and after the change classify differently.
+ */
+function employmentTypeCode(?string $employmentType): ?string
+{
+    return match (strtoupper(trim((string) $employmentType))) {
+        'JO', 'JOB ORDER' => 'JO',
+        'COS', 'CONTRACT OF SERVICE' => 'COS',
+        'PLANTILLA', 'REGULAR', 'PERMANENT' => 'PLA',
+        default => null,
+    };
 }
 
 /**

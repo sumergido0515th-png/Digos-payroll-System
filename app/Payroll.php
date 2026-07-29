@@ -271,6 +271,14 @@ function apiSavePayroll(array $p, array $user): array
             $rec['DetailID'] = newId('PD');
             $rec['PayrollNo'] = $payrollNo;
             $rec['LineNo'] = $i + 1;
+            // Charging defaults to the batch's office and function, never to
+            // the employee's home office: where someone is assigned and which
+            // appropriation pays them are different questions, and deriving
+            // one from the other bills the wrong one silently. The columns are
+            // per line so a later screen can override them individually - this
+            // only stops them being written NULL in the meantime.
+            $rec['ChargedOfficeCode'] = $p['OfficeCode'];
+            $rec['FunctionCode'] = $office['FunctionCode'] ?? null;
             $computed[] = $rec;
         }
         $sums = payrollTotals($computed);
@@ -280,8 +288,14 @@ function apiSavePayroll(array $p, array $user): array
             'OfficeCode' => $p['OfficeCode'],
             'Department' => $office['Department'] ?? '',
             'FunctionName' => $office['FunctionName'] ?? '',
+            'FunctionCode' => $office['FunctionCode'] ?? null,
             'TimekeeperID' => $p['TimekeeperID'] ?? '',
+            // Both, and they are not redundant. PreparedBy is the name as
+            // rendered on the printed form and must not drift; PreparedByUser
+            // is the identity Phase 2's segregation-of-duties check reads,
+            // which cannot be written against a display string.
             'PreparedBy' => $user['FullName'] ?: $user['Email'],
+            'PreparedByUser' => $user['Email'],
             'Remarks' => $p['Remarks'] ?? '',
             'Status' => $existing ? $existing['Status'] : 'Draft',
             'TotalGross' => $sums['gross'],
@@ -351,7 +365,10 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
 
     $patch = ['Status' => $to];
     if ($to === 'Approved') {
+        // As with PreparedBy on save: the display name for the printed form,
+        // the key for the Phase 2 check that the approver is not the preparer.
         $patch['ApprovedBy'] = $user['FullName'] ?: $user['Email'];
+        $patch['ApprovedByUser'] = $user['Email'];
         $patch['ApprovedAt'] = date('Y-m-d H:i:s');
     }
     if ($to === 'Released') $patch['ReleasedAt'] = date('Y-m-d H:i:s');
