@@ -93,13 +93,68 @@ function build(string $out): int
     passthru(sprintf('"%s" "%s" --sql=%s',
         PHP_BINARY, PROJECT . '/tools/migrate.php', escapeshellarg($schema)));
 
+    $reset = writeResetScript();
+
     audit($out);
 
     say('');
     say(sprintf('package: %s', realpath($out)));
     say(sprintf('files:   %d', $copied + 3));
     say(sprintf('schema:  %s', realpath($schema) ?: $schema));
+    say(sprintf('reset:   %s', realpath($reset) ?: $reset));
     return 0;
+}
+
+/**
+ * Writes the script that empties a database so deploy-schema.sql can be
+ * imported into it.
+ *
+ * deploy-schema.sql requires an empty database and cannot be re-run: its
+ * ALTER TABLE statements are not idempotent, so a second pass dies on
+ * "Duplicate column name". An import that fails partway - a host defaulting to
+ * MyISAM, a dropped connection, a timeout - therefore leaves a database that
+ * the same file can no longer be imported into, and the retry fails on
+ * whichever leftover it meets first rather than on anything informative.
+ *
+ * Dropping every table by hand in phpMyAdmin is the alternative, and with
+ * twenty foreign keys the order matters. This does it in one paste. It is a
+ * separate file, never referenced by the import, because it destroys data and
+ * that has to stay a deliberate act.
+ */
+function writeResetScript(): string
+{
+    $path = PROJECT . '/dist/deploy-reset.sql';
+    $tables = [];
+
+    foreach (glob(PROJECT . '/migrations/*.sql') ?: [] as $file) {
+        $sql = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($file));
+        if (preg_match_all('/CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+`?(\w+)`?/i', $sql, $m)) {
+            foreach ($m[1] as $t) $tables[$t] = true;
+        }
+    }
+    $tables['schema_migrations'] = true;      // created by migrate.php, not a migration
+    $names = array_keys($tables);
+    sort($names);
+
+    $body = "-- Digos Payroll - reset a database before importing deploy-schema.sql\n"
+        . '-- Generated ' . date('Y-m-d H:i') . " by tools/build-deploy.php\n"
+        . "--\n"
+        . "-- DESTROYS ALL DATA in the selected database. Run it only when an\n"
+        . "-- import has failed partway and you are starting that import again.\n"
+        . "-- Take a backup first if the database holds anything you want.\n"
+        . "--\n"
+        . "-- phpMyAdmin -> select the database -> SQL -> paste -> Go, then import\n"
+        . "-- deploy-schema.sql into the now-empty database.\n\n"
+        . "SET FOREIGN_KEY_CHECKS = 0;\n\n";
+
+    foreach ($names as $t) $body .= "DROP TABLE IF EXISTS `$t`;\n";
+
+    $body .= "\nSET FOREIGN_KEY_CHECKS = 1;\n";
+
+    file_put_contents($path, $body);
+    say(sprintf('  deploy-reset.sql  written (%d tables)', count($names)));
+
+    return $path;
 }
 
 /**
