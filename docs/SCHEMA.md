@@ -153,6 +153,19 @@ Fixed in the same change as this note:
 gap was open. **If a later audit finds these columns NULL again, the write path has
 regressed — do not simply write another backfill.**
 
+> **`0013` had a hole of its own, and that rule nearly misdiagnosed it.** *Added 2026-07-29,
+> re-verifying this document against the live database.* `0013` backfilled the three columns
+> in the table above but not the two `0006` added to `PayrollDetails`, so two payroll lines
+> still carried `ChargedOfficeCode = NULL` — both on payrolls created after `0006` ran and
+> before `apiSavePayroll` was taught to write the column, a window neither backfill covered.
+> Read literally, the rule above says the write path regressed. It had not: `Payroll.php`
+> charges every line from the payroll header on save, and always did once it was wired.
+> `migrations/0014_backfill_line_charging_missed_by_0013.sql` closes the gap.
+>
+> The rule still stands for the three columns it was written about. The correction is to
+> **check the write path before writing the backfill** — the answer here was that the code
+> was right and the data was stale, which is the opposite of the last time.
+
 `Contracts` is the deliberate exception. Employee save still creates no contract row, because
 `0005` exists to preserve rate history and mirroring the employee form's single start/end
 pair on every save is precisely the overwrite it was built to prevent. Contracts gets its own
@@ -163,20 +176,20 @@ contract row until then.
 
 ## Known-unresolved data, surfaced by the backfills
 
-Measured against a copy of the live database:
+Measured against the live database, re-counted 2026-07-29:
 
 | What | Rows | Why it is NULL |
 |---|---|---|
-| `Offices.FunctionCode` | 3 of 3 | Two offices store `9999`, which is neither a `FunctionCode` nor a `FunctionName`; one is empty. Not recoverable by guessing |
-| `Payroll.FunctionCode` | 3 of 3 | Inherited — the header string is empty and the office could not resolve |
-| `PayrollDetails.FunctionCode` | 3 of 3 | Propagated from the above |
+| `Offices.FunctionCode` | 4 of 4 | Three offices store `9999` and one `8721` — neither a `FunctionCode` nor a `FunctionName` in `Functions`. Not recoverable by guessing |
+| `Payroll.FunctionCode` | 5 of 5 | Inherited — the header string is empty or `9999`, and the office could not resolve |
+| `PayrollDetails.FunctionCode` | 5 of 5 | Propagated from the above |
 
 **These NULLs are the correct outcome, not a defect.** A wrong function prints an amount
 under an appropriation it was never charged to. A NULL is visible at sign-off; a guess is
 not. Fixing them is data entry — assign each office a real Function/PPA — and is a
 prerequisite for Phase 6's CAFOA-related rules to mean anything.
 
-**Segregation of duties, now measurable.** With `0007` applied, two of three payrolls have
+**Segregation of duties, now measurable.** With `0007` applied, three of five payrolls have
 `PreparedByUser` identical to `ApprovedByUser` — self-approval. This was undetectable while
 identity was a display string. Phase 2 enforces the prohibition; Phase 1 merely makes it
 visible, which is the point of the key.
@@ -221,8 +234,8 @@ already instructs.
 **First half met.** `0003`–`0009` applied in order against a copy of `digos_payroll`, all
 seven clean, 20 foreign keys created, every backfill verified by inspection.
 
-**Caveat on what that proves.** The live database holds **2 employees, 3 payrolls, 3 payroll
-lines, 0 departments**. It is development data, not a production dataset. The migrations are
+**Caveat on what that proves.** The live database holds **3 employees, 5 payrolls, 5 payroll
+lines, 0 departments** (re-counted 2026-07-29). It is development data, not a production dataset. The migrations are
 proven correct against the *shape* of real data and against its known-bad values — the
 `9999` function codes were caught this way — but not against production *volume* or the
 variety a full employee roster would contain. Re-run this before any real cutover.

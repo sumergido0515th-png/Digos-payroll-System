@@ -443,6 +443,13 @@ function apiUndoLast(array $p, array $user): array
         });
         $result = ['undone' => 'create', 'PayrollNo' => $rec['PayrollNo']];
     } elseif (($rec['action'] ?? '') === 'status') {
+        // The create branch checks this and this one did not, so undoing a
+        // status change on a payroll that has since been deleted updated zero
+        // rows and still reported success - the undo record outlives the row
+        // it names. The live database is in that state right now.
+        if (!DB::row('SELECT PayrollNo FROM Payroll WHERE PayrollNo = ?', [$rec['PayrollNo']])) {
+            throw new RuntimeException('Payroll ' . $rec['PayrollNo'] . ' no longer exists.');
+        }
         DB::update('Payroll', ['Status' => $rec['prevStatus']], 'PayrollNo', $rec['PayrollNo']);
         $result = ['undone' => 'status', 'PayrollNo' => $rec['PayrollNo'], 'Status' => $rec['prevStatus']];
     } else {

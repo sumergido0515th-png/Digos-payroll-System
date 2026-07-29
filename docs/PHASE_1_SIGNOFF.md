@@ -19,16 +19,45 @@ Measured against the working database on 2026-07-29, not asserted:
 
 | Check | Result |
 |---|---|
-| Migrations applied | 13 of 13, 0 pending |
+| Migrations applied | 14 of 14, 0 pending |
 | Tables / foreign keys | 17 / 20 — matches [SCHEMA.md](SCHEMA.md) exactly |
 | Table collations | uniform; no foreign key can fail on a collation mismatch |
 | `EmploymentTypeCode` unset | 0 employees |
 | `PreparedByUser` unset | 0 payrolls |
-| Test suite | 46 of 46 pass, including the 9 integration tests |
+| `ChargedOfficeCode` unset | 0 payroll lines — 2 until `0014`, see below |
+| Test suite | 55 of 55 pass, including the 13 integration tests |
 
 The write paths that populate the new model are wired and exercised end to end: employee
 save writes the type code, payroll save writes the preparer key, approval writes the
 approver key, and payroll lines write their charged office.
+
+### What re-verifying this packet turned up
+
+The packet above was written from measurement, and re-measuring it before sign-off still
+found three defects. All are fixed; none change any of the four decisions below.
+
+1. **`0013` did not backfill `PayrollDetails.ChargedOfficeCode`.** Two of five payroll lines
+   were still NULL — payrolls created after `0006` ran and before the write path was wired,
+   a window neither backfill covered. Closed by `0014`. This one mattered out of proportion
+   to its size: [SCHEMA.md](SCHEMA.md) tells a later auditor that a NULL here means the write
+   path has regressed, which was the wrong conclusion. The write path was correct; the
+   backfill had the hole.
+2. **The delete guards never caught up with `0009`'s foreign keys.** Deleting an office with
+   payroll history showed the user `SQLSTATE[23000] ... 1451 a foreign key constraint fails`,
+   and deleting a Function/PPA — unguarded entirely, and `ON DELETE SET NULL` — silently
+   blanked `FunctionCode` on *approved* payrolls, which is the record of which appropriation
+   paid them and is recoverable from nothing else in the schema. Both now refuse in words a
+   timekeeper can act on, asserted by `tests/Integration/DeleteGuardTest.php`.
+3. **The test harness could have written to the live database.** `TestDatabase` reads the
+   environment and refuses a non-test name, but `DB::` reads the `DB_NAME` *constant*, which
+   `app/config.php` defaults to the working database. Any test loading an `api*` function
+   would have run against real payroll data with the guard none the wiser. `tests/bootstrap.php`
+   now pins the constant before anything can load the config. Phase 2's gateway tests would
+   have been the first to hit this.
+
+The shape is the same one Phase 1 already recorded once: **a migration is not finished when
+it applies cleanly, and a foreign key is not finished when it is created.** Something has to
+write the column, and something has to handle the refusal.
 
 ---
 
@@ -124,15 +153,31 @@ function NULL they have nothing to check and would pass vacuously.
 
 ---
 
-## Sign-off
+## Sign-off — **given 2026-07-29**
 
 ```
-[ ] Decision 1 — Tier split deferred to Phase 2's first migration      accept / reject
-[ ] Decision 2 — Existing self-approved payrolls          grandfather / re-approve / void
-[ ] Decision 3 — Contracts module deferred to Phase 3                  accept / reject
-[ ] Decision 4 — Function/PPA codes assigned to all four offices       done / outstanding
-[ ] Schema reviewed and signed off; Phase 2 may start
+[x] Decision 1 — Tier split deferred to Phase 2's first migration      ACCEPTED
+[x] Decision 2 — Existing self-approved payrolls                       GRANDFATHERED
+[x] Decision 3 — Contracts module deferred to Phase 3                  ACCEPTED
+[~] Decision 4 — Function/PPA codes assigned to all four offices       OUTSTANDING (owner: data entry)
+[x] Schema reviewed and signed off; Phase 2 may start
 ```
 
-Record the outcome in the Change Log in [PHASE_PLAN.md](PHASE_PLAN.md) and set Phase 1 to
-`DONE`.
+**Decision 2, recorded for the audit question somebody will eventually ask.** The three
+self-approved payrolls (`PR-2026-000001`, `PR-2026-000003`, `DIG-2026-000004`) are
+grandfathered because they are development records, not disbursement history — the database
+held 3 employees and 5 payrolls when the decision was made, and self-approval was not
+detectable at all until `0007` made identity a key rather than a display string. Phase 2
+prohibits it from that point forward. Phase 7 builds its workflow over rows that include
+these three; it must not assume every historical approval passes the new rule.
+
+**Decision 4 is the one item still open, and it does not gate Phase 2.** It gates **Phase 6**:
+the CAFOA rules check the charged appropriation, and against four NULL functions they would
+pass vacuously — the worst failure mode for a pre-audit rule, since it reports success. The
+four offices are `CMO`, `OCEEM`, `OCM` and `OCVET`; the dropdown is at **Departments &
+Offices → edit an office → "Function / PPA charged"**. Every payroll created afterwards
+inherits its function from the charged office, so this corrects itself going forward the
+moment the offices carry real codes. It stays in the [PHASE_PLAN.md](PHASE_PLAN.md) Backlog
+as a Phase 6 prerequisite until entered.
+
+Phase 1 is `DONE`. Phase 2 may start — **on its own branch**, in a fresh session.

@@ -234,13 +234,48 @@ function apiSaveOffice(array $p, array $user): array
     return ['created' => true, 'OfficeCode' => $code];
 }
 
-/** Deletes an office when no employee references it. */
+/** Deletes an office when nothing references it. */
 function apiDeleteOffice(array $p, array $user): array
 {
     requireFields($p, ['OfficeCode']);
-    $used = (int) DB::scalar('SELECT COUNT(*) FROM Employees WHERE OfficeCode = ?', [$p['OfficeCode']]);
-    if ($used) throw new RuntimeException("$used employee(s) are assigned to this office. Reassign them first.");
-    return ['deleted' => DB::exec('DELETE FROM Offices WHERE OfficeCode = ?', [$p['OfficeCode']])];
+    $code = $p['OfficeCode'];
+
+    // Every reference has to be checked here, not just employees. Migration
+    // 0009 made these real foreign keys, so the database now refuses the
+    // delete on its own - but what it raises is SQLSTATE 23000 ... errno 1451,
+    // and api.php returns the exception message straight to the browser. A
+    // timekeeper reading "a foreign key constraint fails" learns nothing about
+    // what to do next; the checks below say which records are in the way.
+    referenceGuard($code, [
+        ['SELECT COUNT(*) FROM Employees WHERE OfficeCode = ?',
+            '%d employee(s) are assigned to this office. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Payroll WHERE OfficeCode = ?',
+            '%d payroll transaction(s) are charged to this office. An office with payroll history cannot be deleted - set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM PayrollDetails WHERE ChargedOfficeCode = ?',
+            '%d payroll line(s) are charged to this office. Set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM Timekeepers WHERE OfficeCode = ?',
+            '%d timekeeper(s) are assigned to this office. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Offices WHERE ParentOfficeCode = ?',
+            '%d office(s) report to this one as their parent. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Functions WHERE OwningOfficeCode = ?',
+            '%d Function/PPA code(s) are owned by this office. Reassign them first.'],
+    ]);
+    return ['deleted' => DB::exec('DELETE FROM Offices WHERE OfficeCode = ?', [$code])];
+}
+
+/**
+ * Refuses a delete that other records still point at, in the caller's words.
+ *
+ * Each entry is [count query taking the key once, message with one %d]. The
+ * first non-zero count wins - listing every obstacle at once reads as a wall
+ * of text, and clearing the first usually clears the rest.
+ */
+function referenceGuard(string $key, array $checks): void
+{
+    foreach ($checks as [$sql, $message]) {
+        $n = (int) DB::scalar($sql, [$key]);
+        if ($n) throw new RuntimeException(sprintf($message, $n));
+    }
 }
 
 /** Lists departments with live search. */
@@ -314,7 +349,23 @@ function apiSaveFunction(array $p, array $user): array
 function apiDeleteFunction(array $p, array $user): array
 {
     requireFields($p, ['FunctionCode']);
-    return ['deleted' => DB::exec('DELETE FROM Functions WHERE FunctionCode = ?', [$p['FunctionCode']])];
+    $code = $p['FunctionCode'];
+
+    // Unlike the office keys, every foreign key onto Functions is ON DELETE
+    // SET NULL, so the database raises nothing at all: it quietly blanks
+    // FunctionCode on the offices, payrolls and payroll lines charged to this
+    // fund - including approved ones. Losing which appropriation paid an
+    // approved payroll is not recoverable from anything else in the schema,
+    // and it is exactly what Phase 6's CAFOA rules read.
+    referenceGuard($code, [
+        ['SELECT COUNT(*) FROM Payroll WHERE FunctionCode = ?',
+            '%d payroll transaction(s) are charged to this Function/PPA. Deleting it would erase which appropriation paid them - set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM PayrollDetails WHERE FunctionCode = ?',
+            '%d payroll line(s) are charged to this Function/PPA. Set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM Offices WHERE FunctionCode = ?',
+            '%d office(s) charge to this Function/PPA. Assign them a different one first.'],
+    ]);
+    return ['deleted' => DB::exec('DELETE FROM Functions WHERE FunctionCode = ?', [$code])];
 }
 
 /* ==========================================================================
