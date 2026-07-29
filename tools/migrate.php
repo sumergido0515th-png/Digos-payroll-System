@@ -99,6 +99,21 @@ function emitSql(string $target): int
 
     fwrite($out, "SET SESSION sql_mode = '" . DB_SQL_MODE . "';\n\n");
 
+    // The baseline tables in 0001 declare no ENGINE and so inherit the host's
+    // default. 0003, 0005 and 0008 declare InnoDB. Where the host defaults to
+    // MyISAM those two facts collide: a foreign key from an InnoDB table to a
+    // MyISAM one is rejected with errno 150 "Foreign key constraint is
+    // incorrectly formed", and the import dies at 0005. XAMPP defaults to
+    // InnoDB, which is why this only ever appeared on shared hosting.
+    //
+    // phpMyAdmin runs the whole file in one session, so setting it here covers
+    // every CREATE TABLE below - and it does not touch a single migration
+    // file, which matters because they are applied and checksummed elsewhere.
+    fwrite($out, "-- Every table below must be InnoDB: the baseline tables declare no\n");
+    fwrite($out, "-- ENGINE and would otherwise inherit a host default of MyISAM, which\n");
+    fwrite($out, "-- cannot take the foreign keys that 0005 and 0009 add (errno 150).\n");
+    fwrite($out, "SET SESSION default_storage_engine = 'InnoDB';\n\n");
+
     fwrite($out, "CREATE TABLE IF NOT EXISTS schema_migrations (\n"
         . "    Version   INT          NOT NULL PRIMARY KEY,\n"
         . "    Filename  VARCHAR(190) NOT NULL,\n"
@@ -234,7 +249,17 @@ function connect(array $cfg): PDO
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-        PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION sql_mode = '" . DB_SQL_MODE . "'",
+        // default_storage_engine matters as much as sql_mode here, and for the
+        // same reason: the server default cannot be relied on. The baseline
+        // tables in 0001 declare no ENGINE, so they take whatever the host
+        // picks, while 0003/0005/0008 declare InnoDB explicitly. On a host
+        // defaulting to MyISAM that mismatch makes every foreign key from the
+        // new tables to the baseline ones fail with errno 150 - which is
+        // exactly what happened on InfinityFree. Forcing it per connection
+        // fixes fresh installs everywhere without editing an applied,
+        // checksummed migration.
+        PDO::MYSQL_ATTR_INIT_COMMAND => "SET SESSION sql_mode = '" . DB_SQL_MODE
+            . "', default_storage_engine = 'InnoDB'",
     ];
 
     $server = new PDO("mysql:host={$cfg['host']};charset=utf8mb4", $cfg['user'], $cfg['pass'], $options);

@@ -9,9 +9,23 @@
 
 declare(strict_types=1);
 
-/** Tables included in backups, in restore-safe order. */
-const BACKUP_TABLES = ['Employees', 'Offices', 'Departments', 'Functions', 'Timekeepers',
-    'PayrollPeriods', 'Payroll', 'PayrollDetails', 'Users', 'Logs', 'Settings', 'Counters'];
+/**
+ * Tables included in backups, parents before children.
+ *
+ * Phase 1 added EmploymentTypes, Contracts and DtrDays and nothing added them
+ * here, so every backup taken between then and now silently omitted them. That
+ * is worse than it sounds: restoring deletes Employees rows first, and
+ * Contracts and DtrDays cascade from Employees - so a restore would have wiped
+ * both and had nothing to put back.
+ *
+ * `Backup` and `schema_migrations` are excluded on purpose. The registry has to
+ * survive so the file being restored from is still listed afterwards, and the
+ * migration ledger describes the schema, which a data-only restore never
+ * touches.
+ */
+const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Functions',
+    'Employees', 'Contracts', 'Timekeepers', 'PayrollPeriods', 'DtrDays',
+    'Payroll', 'PayrollDetails', 'Logs', 'Settings', 'Counters'];
 
 /** Returns the whole Settings table as a map, cached per request. */
 function settingsMap(bool $refresh = false): array
@@ -275,11 +289,21 @@ function apiRestoreBackup(array $p, array $user): array
 
     runBackup('Pre-restore safety', $user['Email']);
 
-    $sql = file_get_contents($path);
+    // Strip comment lines before splitting, not after.
+    //
+    // The old form skipped any chunk that *began* with "--", and the dump's
+    // first chunk is the header comment followed by SET FOREIGN_KEY_CHECKS=0 -
+    // so the one statement that makes a restore possible was the one statement
+    // never run. That was harmless while the schema had no foreign keys. Since
+    // 0009 added twenty, a restore would delete Employees with the constraints
+    // still live, cascading Contracts and DtrDays away before the inserts that
+    // refill them.
+    $sql = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($path));
+
     DB::tx(function () use ($sql) {
         foreach (explode(";\n", $sql) as $statement) {
             $statement = trim($statement);
-            if ($statement === '' || str_starts_with($statement, '--')) continue;
+            if ($statement === '') continue;
             DB::pdo()->exec($statement);
         }
     });
