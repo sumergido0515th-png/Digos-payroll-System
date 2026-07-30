@@ -81,6 +81,14 @@ const ROUTES = [
     'apiGetRoles' => ['user.manage', 'Users', ''],
     'apiGetLogs' => ['log.view', 'Logs', ''],
 
+    // Scope grants. Every mutation is audited: this is the table that decides
+    // who can see which office's payroll, so a change to it is exactly the kind
+    // of thing an auditor asks about later.
+    'apiListScopeGrants' => ['scope.manage', 'ScopeGrants', ''],
+    'apiGetScopeDimensions' => ['scope.manage', 'ScopeGrants', ''],
+    'apiSaveScopeGrant' => ['scope.manage', 'ScopeGrants', 'SAVE_SCOPE_GRANT'],
+    'apiDeleteScopeGrant' => ['scope.manage', 'ScopeGrants', 'DELETE_SCOPE_GRANT'],
+
     // Settings & backup
     'apiGetSettings' => ['settings.view', 'Settings', ''],
     'apiSaveSettings' => ['settings.edit', 'Settings', 'SAVE_SETTINGS'],

@@ -8,32 +8,20 @@
 
 declare(strict_types=1);
 
+use Digos\Repo\EmployeeRepo;
+
 /* ==========================================================================
  * Employees
  * ======================================================================== */
 
-/** Lists employees with live search + filters + pagination. */
+/** Lists employees with live search + filters + pagination, within scope. */
 function apiListEmployees(array $p, array $user): array
 {
-    $sql = 'SELECT * FROM Employees WHERE 1=1';
-    $params = [];
-    foreach (['OfficeCode', 'Department', 'EmploymentType', 'Status'] as $f) {
-        if (!empty($p[$f])) { $sql .= " AND `$f` = ?"; $params[] = $p[$f]; }
-    }
-    if (!empty($p['Function'])) { $sql .= ' AND FunctionName = ?'; $params[] = $p['Function']; }
-    if (!empty($p['search'])) {
-        $fields = ['EmployeeID', 'EmployeeNo', 'LastName', 'FirstName', 'MiddleName',
-            'Position', 'Department', 'OfficeCode', 'Email', 'TIN', 'CashCard'];
-        $sql .= ' AND (' . implode(' OR ', array_map(fn($f) => "`$f` LIKE ?", $fields)) . ')';
-        foreach ($fields as $f) $params[] = '%' . $p['search'] . '%';
-    }
-    $sql .= ' ORDER BY LastName, FirstName';
-
     $rows = array_map(function ($e) {
         $e = aliasFunctionOut($e);
         $e['FullName'] = fullName($e);
         return $e;
-    }, DB::rows($sql, $params));
+    }, EmployeeRepo::listScoped($user, $p, EmployeeRepo::mayReadSensitive($user)));
 
     $page = max(1, (int) num($p['page'] ?? 1));
     $size = (int) num($p['pageSize'] ?? 25) ?: 25;
@@ -45,11 +33,14 @@ function apiListEmployees(array $p, array $user): array
     ];
 }
 
-/** Returns a single employee. */
+/** Returns a single employee, if the caller's scope covers them. */
 function apiGetEmployee(array $p, array $user): array
 {
     requireFields($p, ['EmployeeID']);
-    $e = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
+    $e = EmployeeRepo::findScoped($user, $p['EmployeeID'], EmployeeRepo::mayReadSensitive($user));
+
+    // As with apiGetPayroll: out of scope and absent report the same thing, so
+    // that a caller cannot confirm another office's employee exists by asking.
     if (!$e) throw new RuntimeException('Employee not found: ' . $p['EmployeeID']);
     $e = aliasFunctionOut($e);
     $e['FullName'] = fullName($e);
@@ -106,17 +97,25 @@ function apiSaveEmployee(array $p, array $user): array
         'Remarks' => $p['Remarks'] ?? '',
     ];
 
-    if ($isNew) {
-        $record['EmployeeID'] = newId('EMP');
-        DB::insert('Employees', $record);
-        return ['created' => true, 'EmployeeID' => $record['EmployeeID']];
+    $employeeId = $isNew ? newId('EMP') : $p['EmployeeID'];
+
+    if (!$isNew && !DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeID = ?', [$employeeId])) {
+        throw new RuntimeException('Employee not found: ' . $employeeId);
     }
-    if (!DB::update('Employees', $record, 'EmployeeID', $p['EmployeeID'])) {
-        // rowCount can be 0 on a no-change update; verify existence explicitly.
-        $exists = DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
-        if (!$exists) throw new RuntimeException('Employee not found: ' . $p['EmployeeID']);
-    }
-    return ['updated' => true, 'EmployeeID' => $p['EmployeeID']];
+
+    // One record in, two tables out. The split is migration 0015's; the caller
+    // still posts a single form, because which tier a field belongs to is the
+    // system's classification and not something a timekeeper should have to
+    // know. EmployeeRepo::save() writes both halves in one transaction - a
+    // directory row whose restricted half failed to save is an employee with no
+    // rate, which the payroll engine would compute as zero pay rather than
+    // refuse.
+    [$tier1, $tier2] = EmployeeRepo::splitTiers($record);
+    EmployeeRepo::save($employeeId, $tier1, $tier2, $isNew, EmployeeRepo::mayReadSensitive($user));
+
+    return $isNew
+        ? ['created' => true, 'EmployeeID' => $employeeId]
+        : ['updated' => true, 'EmployeeID' => $employeeId];
 }
 
 /** Deletes an employee unless referenced by a payroll line. */

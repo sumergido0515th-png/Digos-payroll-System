@@ -36,6 +36,35 @@ final class RouteTableTest extends TestCase
         'apiLogout',        // ending your own session needs no permission
     ];
 
+    /**
+     * Permissions no named role holds, reachable only through Admin's '*'.
+     *
+     * Every entry is a deliberate decision that one role and no other may do
+     * this. Anything not listed here has to appear in some role's PERMISSIONS,
+     * which is what catches a typo: 'scope.manag' would be held by nobody,
+     * leaving the route reachable only by an administrator - failing closed,
+     * but silently and for the wrong reason.
+     *
+     * @var array<string,string>
+     */
+    private const ADMIN_ONLY_PERMISSIONS = [
+        'scope.manage' => 'who may see which office is an administrator decision; '
+            . 'a role that could widen its own scope would be no control at all',
+        'user.manage' => 'account creation and role assignment',
+        'settings.edit' => 'system-wide settings, including the payroll number prefix',
+        'settings.view' => 'same screen as settings.edit',
+        'backup.run' => 'reads and restores the whole database',
+
+        // Found by this guard on its first run, and PRE-DATES Phase 2: no role
+        // has ever held it, on either side of the role remap. Employee deletion
+        // has always been administrator-only through '*', and apiDeleteEmployee
+        // already refuses anyone who appears on a payroll line, so it removes
+        // mistakes rather than history. Listed rather than granted to HRMO,
+        // because handing a role a destructive power it never had is a policy
+        // decision and not a side effect of adding a test.
+        'employee.delete' => 'destructive master-data removal; administrator-only since Phase 0',
+    ];
+
     public function testEveryRouteResolvesToADefinedFunction(): void
     {
         $functions = SourceTree::apiFunctions();
@@ -78,6 +107,74 @@ final class RouteTableTest extends TestCase
             "Give each a permission, or add it to INTENTIONALLY_UNPRIVILEGED\n" .
             "with a comment explaining why it is safe.",
             implode("\n  - ", $unguarded)));
+    }
+
+    /**
+     * A permission no role can hold is a route only an administrator reaches,
+     * usually because somebody mistyped it.
+     *
+     * The failure is quiet, which is why it needs a test: requirePermission()
+     * refuses everyone except Admin's '*', so the endpoint appears to work for
+     * whoever built it and is invisibly broken for every other role. Nothing
+     * throws and nothing logs.
+     */
+    public function testEveryRoutePermissionIsOneSomeRoleCanHold(): void
+    {
+        $granted = [];
+        foreach ($this->permissionMatrix() as $permissions) {
+            foreach ($permissions as $permission) $granted[$permission] = true;
+        }
+
+        $orphans = [];
+        foreach (SourceTree::routes() as $action => $route) {
+            $permission = $route['permission'];
+            if ($permission === '' || $permission === '*') continue;
+            if (isset($granted[$permission])) continue;
+            if (isset(self::ADMIN_ONLY_PERMISSIONS[$permission])) continue;
+
+            $orphans[] = "$action needs '$permission'";
+        }
+
+        $this->assertSame([], $orphans, sprintf(
+            "Route permissions that appear in no role's PERMISSIONS list:\n  - %s\n\n" .
+            "Either the permission is misspelled, or the role that should hold it\n" .
+            "never got it. If it is genuinely administrator-only, add it to\n" .
+            "ADMIN_ONLY_PERMISSIONS with the reason.",
+            implode("\n  - ", $orphans)));
+    }
+
+    /**
+     * The PERMISSIONS matrix, parsed out of app/Auth.php as text.
+     *
+     * Read rather than loaded: app/Auth.php is procedural and requiring it
+     * would pull in the database and session layer, which the architecture
+     * suite exists to run without.
+     *
+     * @return array<string, string[]> role => permissions
+     */
+    private function permissionMatrix(): array
+    {
+        $src = SourceTree::read('app/Auth.php');
+
+        if (!preg_match('/const\s+PERMISSIONS\s*=\s*\[(.*?)\n\];/s', $src, $block)) {
+            throw new \RuntimeException('Could not locate PERMISSIONS in app/Auth.php.');
+        }
+
+        preg_match_all("/'(?<role>[^']+)'\s*=>\s*\[(?<perms>[^\]]*)\]/s", $block[1], $roles, PREG_SET_ORDER);
+
+        $matrix = [];
+        foreach ($roles as $role) {
+            preg_match_all("/'([^']+)'/", $role['perms'], $perms);
+            $matrix[$role['role']] = $perms[1];
+        }
+
+        // Canary: a matrix that failed to parse would make the guard above
+        // pass by finding nothing to check.
+        if (count($matrix) < 5) {
+            throw new \RuntimeException(
+                'Parsed only ' . count($matrix) . ' roles from PERMISSIONS - the regex has drifted.');
+        }
+        return $matrix;
     }
 
     public function testMutatingRoutesAreAudited(): void

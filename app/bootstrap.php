@@ -8,7 +8,24 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/Helpers.php';
+
+// Access layer, before anything that queries. Required explicitly rather than
+// autoloaded: composer's autoloader lives in vendor/, which tools/build-deploy.php
+// deliberately does not ship - "nothing at runtime requires it" - so pulling it
+// in here would break the shared-host package the moment it was uploaded. The
+// PSR-4 mapping in composer.json still serves the test suite, which does load
+// the autoloader; require_once resolves by path, so a class reached both ways
+// is only ever defined once.
+require_once __DIR__ . '/Domain/Access/ScopeEntity.php';
+require_once __DIR__ . '/Domain/Access/ScopePredicate.php';
+require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
+require_once __DIR__ . '/Repo/ScopeGateway.php';
+require_once __DIR__ . '/Repo/EmployeeRepo.php';
+require_once __DIR__ . '/Repo/PayrollRepo.php';
+require_once __DIR__ . '/Repo/ReferenceRepo.php';
+
 require_once __DIR__ . '/Settings.php';
+require_once __DIR__ . '/Access.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Master.php';
 require_once __DIR__ . '/Payroll.php';

@@ -34,7 +34,12 @@ final class DatabaseAccessTest extends TestCase
         'app/Auth.php',
         'app/Master.php',
         'app/Payroll.php',
-        'app/PrintDoc.php',
+        // app/PrintDoc.php was here. Removed once the print path was scoped:
+        // it had seven direct queries, and one of them - the payroll header -
+        // was the scope layer's largest hole. apiGetPayroll refused another
+        // office's payroll while apiGetPrintHtml rendered the same number in
+        // full. Reads now go through PayrollRepo, EmployeeRepo and
+        // ReferenceRepo. Six left.
         'app/Reports.php',
         'app/Settings.php',
         'public/download.php',
@@ -49,7 +54,10 @@ final class DatabaseAccessTest extends TestCase
             if ($file === 'app/Database.php') continue;             // defines DB itself
             if (in_array($file, self::LEGACY_DIRECT_ACCESS, true)) continue;
 
-            if (preg_match('/\bDB::/', SourceTree::read($file))) {
+            // Code only. A docblock reading "Pure: no DB::, no session" is a
+            // promise not to, and matching it flagged the access layer whose
+            // entire purpose is that it never queries.
+            if (preg_match('/\bDB::/', SourceTree::readCode($file))) {
                 $offenders[] = $file;
             }
         }

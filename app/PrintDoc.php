@@ -23,6 +23,10 @@
 
 declare(strict_types=1);
 
+use Digos\Repo\EmployeeRepo;
+use Digos\Repo\PayrollRepo;
+use Digos\Repo\ReferenceRepo;
+
 /** Fixed number of body rows on the printed form. */
 const PRINT_ROWS = 15;
 
@@ -36,6 +40,83 @@ const LATE_ROWS = 6;
  * does not belong on this form at all.
  */
 const CAFOA_ALLOTMENT = '200';
+
+/* ==========================================================================
+ * Official vs. review output
+ * ========================================================================== */
+
+/**
+ * Whether a payroll in this status prints as the official document.
+ *
+ * Pure, and the single place the question is answered. It reads the STORED
+ * status - never a URL parameter, never a caller's argument - because a
+ * marking that can be removed by editing a query string is decoration rather
+ * than a control.
+ *
+ * Cancelled is deliberately unofficial. A cancelled payroll is still worth
+ * reading back during an audit, and it must not print as though it stands.
+ *
+ * This is the narrowest possible piece of Phase 8, which owns print gating
+ * properly - print serials, reprint reasons, mandatory PDF preview, and an
+ * Official mode reachable only after approval. It exists now only because
+ * previewing a Draft from the workflow would otherwise produce a printout
+ * indistinguishable from an approved one.
+ */
+function payrollPrintIsOfficial(string $status): bool
+{
+    return in_array($status, ['Approved', 'Released'], true);
+}
+
+/**
+ * Stylesheet for the review marking.
+ *
+ * Deliberately NOT built from the WatermarkUrl / WatermarkOpacity settings.
+ * PHASE_PLAN.md carries an explicit warning against exactly that: those are
+ * decorative office branding for the dashboard and sign-in screens, and an
+ * administrator can blank them. A page asserting that it is not official
+ * cannot be something an administrator can switch off, so this is hardcoded.
+ *
+ * It must survive @media print - the paper copy is the whole point, and a
+ * marking that only shows on screen protects nothing. `position:fixed` is
+ * relative to the page box when printing, which is what keeps one rule working
+ * across the four forms' different @page sizes (legal landscape for the
+ * payroll, letter portrait for the summary and CAFOA).
+ */
+function reviewOverlayCss(): string
+{
+    return
+        '.review-strip{position:fixed;top:0;left:0;right:0;z-index:9999;'
+        . 'background:#b00020;color:#fff;font-family:Arial,sans-serif;font-weight:bold;'
+        . 'font-size:9pt;letter-spacing:.12em;text-align:center;padding:3px 0;}'
+        . '.review-wash{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;'
+        . 'pointer-events:none;display:flex;align-items:center;justify-content:center;}'
+        . '.review-wash span{font-family:Arial,sans-serif;font-weight:bold;'
+        . 'font-size:60pt;color:rgba(176,0,32,.13);transform:rotate(-30deg);'
+        . 'white-space:nowrap;letter-spacing:.06em;}'
+        // Keep the ink in print too. print-color-adjust is what stops the
+        // browser "helpfully" dropping the background of the strip.
+        . '@media print{.review-strip,.review-wash{display:flex;'
+        . '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+        . '.review-strip{display:block;}}';
+}
+
+/**
+ * The review marking itself, or '' for an official payroll.
+ *
+ * Names the status, so a reader can tell a draft under preparation from one
+ * waiting on approval without going back to the system.
+ */
+function reviewOverlayHtml(string $status): string
+{
+    if (payrollPrintIsOfficial($status)) return '';
+
+    $label = strtoupper($status) === 'CANCELLED'
+        ? 'CANCELLED PAYROLL - NOT OFFICIAL, NOT FOR PAYMENT'
+        : 'FOR REVIEW ONLY - NOT OFFICIAL (' . strtoupper($status) . ')';
+
+    return '<div class="review-strip">' . esc($label) . '</div>'
+        . '<div class="review-wash"><span>' . esc('NOT OFFICIAL') . '</span></div>';
+}
 
 /**
  * Readable Function/PPA label for a printed form.
@@ -53,11 +134,7 @@ function functionLabel(string $stored): string
     $stored = trim($stored);
     if ($stored === '') return '';
 
-    $row = DB::row(
-        'SELECT FunctionName FROM Functions WHERE FunctionCode = ? OR FunctionName = ? LIMIT 1',
-        [$stored, $stored]);
-
-    return $row['FunctionName'] ?? $stored;
+    return ReferenceRepo::functionName($stored) ?? $stored;
 }
 
 /**
@@ -83,35 +160,52 @@ function employeesFunction(array $employees): string
     return count($found) === 1 ? (string) array_key_first($found) : '';
 }
 
-/** Loads everything one printed payroll needs. */
-function printBundle(string $payrollNo): array
+/**
+ * Loads everything one printed payroll needs, within the caller's scope.
+ *
+ * This function used to take no user and query Payroll directly, which made the
+ * print path a way around the scope layer: apiGetPayroll refused another
+ * office's payroll and apiGetPrintHtml rendered the same number in full, names
+ * and all. `print.run` is held by five of the seven roles, so guessing a payroll
+ * number was the whole attack. It reads through the same repositories as every
+ * other scoped read now.
+ *
+ * @param bool $withSensitive whether the caller may read the restricted
+ *                            employee tier - decided by permission upstream,
+ *                            never by which form is being printed.
+ */
+function printBundle(string $payrollNo, array $user, bool $withSensitive = false): array
 {
-    $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$payrollNo]);
+    $header = PayrollRepo::findScoped($user, $payrollNo);
+
+    // Out of scope reports the same thing as absent, as apiGetPayroll does:
+    // distinguishing them confirms that another office's payroll exists.
     if (!$header) throw new RuntimeException('Payroll not found: ' . $payrollNo);
     $header = aliasFunctionOut($header);
 
-    $details = DB::rows('SELECT * FROM PayrollDetails WHERE PayrollNo = ? ORDER BY LineNo', [$payrollNo]);
+    $details = PayrollRepo::detailsScoped($user, $payrollNo);
 
-    // Employee master records keyed by id (Pag-IBIG numbers, name parts, rates).
-    $employees = [];
-    if ($details) {
-        $ids = array_column($details, 'EmployeeID');
-        $ph = implode(',', array_fill(0, count($ids), '?'));
-        foreach (DB::rows("SELECT * FROM Employees WHERE EmployeeID IN ($ph)", $ids) as $e) {
-            $employees[$e['EmployeeID']] = $e;
-        }
+    // A header inside the caller's scope whose lines are all charged outside it
+    // is a real state - charging is per line, which is what migration 0006 was
+    // for. Refuse rather than render, because a payroll form with no rows on it
+    // does not look broken, it looks like a payroll with nobody on it, and it
+    // would be printed, signed and filed.
+    if (!$details) {
+        throw new RuntimeException(
+            'None of the lines on ' . $payrollNo . ' are charged to an office you have '
+            . 'access to, so there is nothing you can print from it.');
     }
+
+    $employees = EmployeeRepo::forPayrollLines(
+        array_column($details, 'EmployeeID'), $withSensitive);
 
     return [
         'header' => $header,
         'details' => $details,
         'employees' => $employees,
-        'period' => DB::row('SELECT * FROM PayrollPeriods WHERE PeriodID = ?', [$header['PeriodID']]) ?? [],
-        'office' => aliasFunctionOut(
-            DB::row('SELECT * FROM Offices WHERE OfficeCode = ?', [$header['OfficeCode']]) ?? []),
-        'timekeeper' => $header['TimekeeperID']
-            ? DB::row('SELECT * FROM Timekeepers WHERE TimekeeperID = ?', [$header['TimekeeperID']])
-            : null,
+        'period' => ReferenceRepo::period((string) $header['PeriodID']),
+        'office' => aliasFunctionOut(ReferenceRepo::office((string) $header['OfficeCode'])),
+        'timekeeper' => ReferenceRepo::timekeeper((string) ($header['TimekeeperID'] ?? '')),
         's' => settingsMap(),
     ];
 }
@@ -120,20 +214,20 @@ function printBundle(string $payrollNo): array
 function apiGetPrintHtml(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    return ['html' => buildFormHtml($p['PayrollNo'], (string) ($p['form'] ?? 'payroll'))];
+    return ['html' => buildFormHtml($p['PayrollNo'], (string) ($p['form'] ?? 'payroll'), $user)];
 }
 
 /**
  * Dispatches to one of the printable forms of a payroll:
  * payroll (default) | pagibig | summary | cafoa.
  */
-function buildFormHtml(string $payrollNo, string $form): string
+function buildFormHtml(string $payrollNo, string $form, array $user): string
 {
     return match ($form) {
-        '', 'payroll' => buildPrintHtml($payrollNo),
-        'pagibig' => buildPagibigHtml($payrollNo),
-        'summary' => buildSummaryHtml($payrollNo),
-        'cafoa' => buildCafoaHtml($payrollNo),
+        '', 'payroll' => buildPrintHtml($payrollNo, $user),
+        'pagibig' => buildPagibigHtml($payrollNo, $user),
+        'summary' => buildSummaryHtml($payrollNo, $user),
+        'cafoa' => buildCafoaHtml($payrollNo, $user),
         default => throw new RuntimeException('Unknown print form: ' . $form),
     };
 }
@@ -198,9 +292,9 @@ function printLine(array $d, float $hoursPerDay): array
  * Builds the complete printable HTML document in the uploaded worksheet's
  * layout. Every value comes from the database; unset signatories stay blank.
  */
-function buildPrintHtml(string $payrollNo): string
+function buildPrintHtml(string $payrollNo, array $user): string
 {
-    $b = printBundle($payrollNo);
+    $b = printBundle($payrollNo, $user);
     $s = $b['s'];
     $pd = $b['period'];
     $h = $b['header'];
@@ -318,7 +412,10 @@ function buildPrintHtml(string $payrollNo): string
         . '.foot{display:flex;justify-content:space-between;align-items:center;font-size:7.5pt;'
         . 'margin-top:4px;color:#333;}'
         . '@media print{.noprint{display:none}}'
-        . '</style></head><body><div class="sheet">'
+        . reviewOverlayCss()
+        . '</style></head><body>'
+        . reviewOverlayHtml((string) ($h['Status'] ?? ''))
+        . '<div class="sheet">'
 
         // ---- header ---------------------------------------------------------
         . '<h1>DAILY WAGE OF PAYROLL</h1>'
@@ -423,9 +520,26 @@ function buildPrintHtml(string $payrollNo): string
  * employee with Pag-IBIG MID No., name parts, PERCOV, monthly compensation
  * and the EE share (the payroll line's Pag-IBIG deduction).
  */
-function buildPagibigHtml(string $payrollNo): string
+function buildPagibigHtml(string $payrollNo, array $user): string
 {
-    $b = printBundle($payrollNo);
+    // The only form that reads the restricted tier: it prints each employee's
+    // Pag-IBIG MID number and monthly compensation, both of which migration
+    // 0015 moved to EmployeeSensitive.
+    //
+    // Refused outright rather than rendered with those columns blank. A
+    // statutory remittance list that looks complete and has holes in it is
+    // worse than no list - nobody notices until the remittance is rejected,
+    // and by then it has been signed and sent. Of the five roles holding
+    // print.run, HRMO, Payroll In-Charge and Pre-Auditor hold this; Encoder
+    // and Office Head do not.
+    if (!EmployeeRepo::mayReadSensitive($user)) {
+        throw new RuntimeException(
+            'The Pag-IBIG remittance list shows each employee\'s Pag-IBIG number and '
+            . 'monthly rate, which your role is not allowed to see. Ask HR or the '
+            . 'payroll in-charge to print this one.');
+    }
+
+    $b = printBundle($payrollNo, $user, true);
     $s = $b['s'];
     $h = $b['header'];
     $pv = percov($b['period']);
@@ -472,7 +586,10 @@ function buildPagibigHtml(string $payrollNo): string
         . 'tr.total td{font-weight:bold;border-top:2px solid #000;}'
         . '.foot{font-size:7.5pt;color:#333;margin-top:6px;}'
         . '@media print{.noprint{display:none}}'
-        . '</style></head><body><div class="sheet">'
+        . reviewOverlayCss()
+        . '</style></head><body>'
+        . reviewOverlayHtml((string) ($h['Status'] ?? ''))
+        . '<div class="sheet">'
 
         . '<div class="emp">'
         . '<div><b class="k">Employer ID No.</b><span><b>'
@@ -518,9 +635,9 @@ function buildPagibigHtml(string $payrollNo): string
  * approval amount, APPROVED BY signatories and the four numbered
  * certifications with amount in words.
  */
-function buildSummaryHtml(string $payrollNo): string
+function buildSummaryHtml(string $payrollNo, array $user): string
 {
-    $b = printBundle($payrollNo);
+    $b = printBundle($payrollNo, $user);
     $s = $b['s'];
     $h = $b['header'];
     $pd = $b['period'];
@@ -572,7 +689,10 @@ function buildSummaryHtml(string $payrollNo): string
         . '.botsig>div{flex:1;border-top:1px solid #000;margin:0 12px;padding-top:1px;}'
         . '.foot{font-size:7.5pt;color:#333;margin-top:10px;}'
         . '@media print{.noprint{display:none}}'
-        . '</style></head><body><div class="sheet">'
+        . reviewOverlayCss()
+        . '</style></head><body>'
+        . reviewOverlayHtml((string) ($h['Status'] ?? ''))
+        . '<div class="sheet">'
 
         . '<div class="gfrow"><span>General Form No. 30-A<br>Revised: April, 1985</span>'
         . '<span>Voucher No: ____________________</span></div>'
@@ -639,9 +759,9 @@ function buildSummaryHtml(string $payrollNo): string
  * requesting official, the three certifications (Budget Officer, Treasurer,
  * Accountant) and the Subsidiary Ledger table.
  */
-function buildCafoaHtml(string $payrollNo): string
+function buildCafoaHtml(string $payrollNo, array $user): string
 {
-    $b = printBundle($payrollNo);
+    $b = printBundle($payrollNo, $user);
     $s = $b['s'];
     $h = $b['header'];
     $pd = $b['period'];
@@ -749,7 +869,10 @@ function buildCafoaHtml(string $payrollNo): string
         . 'text-align:center;height:19px;}'
         . '.foot{font-size:7.5pt;color:#333;margin-top:6px;text-align:center;}'
         . '@media print{.noprint{display:none}}'
-        . '</style></head><body><div class="sheet">'
+        . reviewOverlayCss()
+        . '</style></head><body>'
+        . reviewOverlayHtml((string) ($h['Status'] ?? ''))
+        . '<div class="sheet">'
 
         . '<div class="head">'
         . ($logo !== '' ? '<img src="' . esc($logo) . '" alt="Seal">' : $spacer)

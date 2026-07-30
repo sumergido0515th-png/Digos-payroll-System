@@ -24,8 +24,12 @@ declare(strict_types=1);
  * touches.
  */
 const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Functions',
-    'Employees', 'Contracts', 'Timekeepers', 'PayrollPeriods', 'DtrDays',
-    'Payroll', 'PayrollDetails', 'Logs', 'Settings', 'Counters'];
+    'Employees', 'EmployeeSensitive', 'Contracts', 'Timekeepers', 'PayrollPeriods', 'DtrDays',
+    'Payroll', 'PayrollDetails', 'Logs', 'Settings', 'Counters',
+    // Last, because restore DELETEs and re-INSERTs in this order and every one
+    // of ScopeGrants' foreign keys - Users, Offices, Functions,
+    // EmploymentTypes - has to be back in place before its rows can land.
+    'ScopeGrants'];
 
 /** Returns the whole Settings table as a map, cached per request. */
 function settingsMap(bool $refresh = false): array

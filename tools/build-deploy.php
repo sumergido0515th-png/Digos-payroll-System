@@ -176,7 +176,15 @@ function writeRootHtaccess(string $out): void
 
         # Requests already inside public/ pass through untouched; without this
         # guard the rule matches its own output and loops.
-        RewriteCond %{REQUEST_URI} !^/public/
+        #
+        # The test is against \$1 - the path relative to this .htaccess - and
+        # deliberately not against %{REQUEST_URI}, which carries whatever
+        # subdirectory the site is deployed under. At a document root the two
+        # agree. One level down, REQUEST_URI is "/rehearsal/public/x", which
+        # does not start with "/public/", so a REQUEST_URI test never fires and
+        # the rule rewrites its own output until Apache aborts the request with
+        # AH00124 (10 internal redirects) and serves a 500.
+        RewriteCond \$1 !^public/
         RewriteRule ^(.*)$ public/\$1 [L]
     </IfModule>
 

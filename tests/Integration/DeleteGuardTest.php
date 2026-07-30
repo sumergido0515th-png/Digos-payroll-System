@@ -41,7 +41,7 @@ final class DeleteGuardTest extends TestCase
                 'No test database reachable. Set DB_HOST/DB_NAME/DB_USER/DB_PASS and run '
                 . 'php tools/migrate.php first.');
         }
-        self::loadApplicationLayerAgainstTheTestDatabase();
+        ApplicationLayer::load();
         $this->removeFixture();
         $this->createFixture();
     }
@@ -49,32 +49,6 @@ final class DeleteGuardTest extends TestCase
     protected function tearDown(): void
     {
         if (defined('DB_NAME')) $this->removeFixture();
-    }
-
-    /**
-     * Loads the api* functions with DB_NAME pinned to the test database.
-     *
-     * app/bootstrap.php is never used here - it opens a connection and starts
-     * a session (see CLAUDE.md). Defining DB_NAME first is what keeps DB:: off
-     * the working database: app/config.php only fills in constants that are
-     * still unset, and config.local.php does not set this one.
-     */
-    private static function loadApplicationLayerAgainstTheTestDatabase(): void
-    {
-        if (function_exists('apiDeleteOffice')) return;
-
-        $name = TestDatabase::config()['name'];
-        if (!defined('DB_NAME')) define('DB_NAME', $name);
-
-        if (DB_NAME !== $name) {
-            throw new RuntimeException(
-                'DB_NAME is already ' . DB_NAME . ', not the test database ' . $name . '.');
-        }
-
-        require_once PROJECT_ROOT . '/app/config.php';
-        require_once PROJECT_ROOT . '/app/Database.php';
-        require_once PROJECT_ROOT . '/app/Helpers.php';
-        require_once PROJECT_ROOT . '/app/Master.php';
     }
 
     /** An office and a Function/PPA, with one approved payroll charged to both. */

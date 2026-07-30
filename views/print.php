@@ -12,7 +12,13 @@
           <select class="form-select form-select-sm" id="pp-period"></select></div>
         <div class="col-md-3"><label class="form-label">Status</label>
           <select class="form-select form-select-sm" id="pp-status">
-            <option value="">Approved &amp; Released</option>
+            <!-- Submitted (Pending) is in the default so a payroll can be
+                 previewed while it is being corrected - re-scan, re-verify,
+                 re-preview - without changing a filter to find it. Draft is
+                 deliberately NOT in the default: it has not been submitted,
+                 and offering it as printable by default is how an unfinished
+                 payroll gets printed. It stays one dropdown away. -->
+            <option value="">Submitted, Approved &amp; Released</option>
             <option>Draft</option><option>Pending</option>
             <option>Approved</option><option>Released</option>
           </select></div>
@@ -36,7 +42,10 @@
 /** Print Payroll page module. */
 Pages.print = (function () {
 
-  /** Loads printable payrolls (Approved/Released by default). */
+  /** Statuses shown when no explicit status filter is chosen. */
+  var DEFAULT_STATUSES = ['Pending', 'Approved', 'Released'];
+
+  /** Loads printable payrolls (submitted and later, by default). */
   function load() {
     var status = document.getElementById('pp-status').value;
     api('apiListPayrolls', {
@@ -46,7 +55,7 @@ Pages.print = (function () {
     }).then(function (rows) {
       if (!status) {
         rows = rows.filter(function (r) {
-          return r.Status === 'Approved' || r.Status === 'Released';
+          return DEFAULT_STATUSES.indexOf(r.Status) !== -1;
         });
       }
       document.getElementById('pp-rows').innerHTML = rows.map(function (r) {
@@ -65,7 +74,11 @@ Pages.print = (function () {
           (can('payroll.release') && (r.Status === 'Approved' || r.Status === 'Released') ?
             actionBtn('forward_to_inbox', 'Pages.print.email(\'' + r.PayrollNo + '\')') : '') +
           '</td></tr>';
-      }).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">No printable payrolls found.</td></tr>';
+      }).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">' +
+        (status ? 'No ' + esc(status) + ' payrolls found.'
+                : 'No submitted, approved or released payrolls found. ' +
+                  'Choose Draft above to see payrolls still being prepared.') +
+        '</td></tr>';
     });
   }
 

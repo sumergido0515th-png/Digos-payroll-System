@@ -10,6 +10,10 @@
 
 declare(strict_types=1);
 
+use Digos\Repo\EmployeeRepo;
+use Digos\Repo\PayrollRepo;
+use Digos\Repo\ScopeGateway;
+
 /** Legal workflow transitions, keyed by current status. */
 const PAYROLL_FLOW = [
     'Draft' => ['Pending', 'Cancelled'],
@@ -169,7 +173,9 @@ function apiComputePayroll(array $p, array $user): array
     $cfg = computationConfig();
     $lines = [];
     foreach ($p['lines'] ?? [] as $l) {
-        $emp = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$l['EmployeeID'] ?? '']);
+        // Both tiers: computeLine() computes from DailyRate and HourlyRate,
+        // which migration 0015 moved to EmployeeSensitive.
+        $emp = EmployeeRepo::findForComputation((string) ($l['EmployeeID'] ?? ''));
         if (!$emp) throw new RuntimeException('Employee not found: ' . ($l['EmployeeID'] ?? '?'));
         $lines[] = computeLine($emp, $l, $cfg);
     }
@@ -183,30 +189,24 @@ function apiComputePayroll(array $p, array $user): array
 /** Lists payrolls with search + filters, newest first. */
 function apiListPayrolls(array $p, array $user): array
 {
-    $sql = 'SELECT * FROM Payroll WHERE 1=1';
-    $params = [];
-    foreach (['PeriodID', 'OfficeCode', 'Department', 'Status'] as $f) {
-        if (!empty($p[$f])) { $sql .= " AND `$f` = ?"; $params[] = $p[$f]; }
-    }
-    if (!empty($p['search'])) {
-        $sql .= ' AND (PayrollNo LIKE ? OR OfficeCode LIKE ? OR Department LIKE ? OR PreparedBy LIKE ? OR Remarks LIKE ?)';
-        $like = '%' . $p['search'] . '%';
-        array_push($params, $like, $like, $like, $like, $like);
-    }
-    $sql .= ' ORDER BY DateCreated DESC';
-    return array_map('aliasFunctionOut', DB::rows($sql, $params));
+    return array_map('aliasFunctionOut', PayrollRepo::listScoped($user, $p));
 }
 
 /** One payroll with its lines. */
 function apiGetPayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    $header = PayrollRepo::findScoped($user, $p['PayrollNo']);
+
+    // Out of scope reports the same thing as absent, deliberately. Telling a
+    // caller "that payroll exists but is not yours" confirms the existence of
+    // another office's record, which is the disclosure the scope layer is here
+    // to prevent - and the message a legitimate mistyped number produces is the
+    // same either way.
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
     return [
         'header' => aliasFunctionOut($header),
-        'details' => DB::rows('SELECT * FROM PayrollDetails WHERE PayrollNo = ? ORDER BY LineNo',
-            [$p['PayrollNo']]),
+        'details' => PayrollRepo::detailsScoped($user, $p['PayrollNo']),
     ];
 }
 
@@ -227,6 +227,16 @@ function apiSavePayroll(array $p, array $user): array
 
     $office = DB::row('SELECT * FROM Offices WHERE OfficeCode = ?', [$p['OfficeCode']]);
     if (!$office) throw new RuntimeException('Office not found: ' . $p['OfficeCode']);
+
+    // Scope on the way in, not only on the way out. Filtering reads while
+    // leaving writes open would let a user prepare a payroll charged to an
+    // office they cannot see - and then not be able to open it again. The
+    // charge is checked, not the employees' home offices: which appropriation
+    // pays is the question scope answers.
+    ScopeGateway::requirePermits($user, 'Payroll', [
+        'OfficeCode' => $p['OfficeCode'],
+        'FunctionCode' => $office['FunctionCode'] ?? null,
+    ], 'payrolls charged to ' . $p['OfficeCode']);
 
     $lines = $p['lines'] ?? [];
     if (!$lines) throw new RuntimeException('Add at least one employee to the payroll.');
@@ -262,7 +272,7 @@ function apiSavePayroll(array $p, array $user): array
 
         $computed = [];
         foreach (array_values($lines) as $i => $l) {
-            $emp = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$l['EmployeeID'] ?? '']);
+            $emp = EmployeeRepo::findForComputation((string) ($l['EmployeeID'] ?? ''));
             if (!$emp) throw new RuntimeException('Employee not found: ' . ($l['EmployeeID'] ?? '?'));
             if ($emp['Status'] !== 'Active') {
                 throw new RuntimeException(fullName($emp) . ' is ' . $emp['Status'] . ' and cannot be paid.');
@@ -352,6 +362,32 @@ function apiDeletePayroll(array $p, array $user): array
  * Workflow
  * ======================================================================== */
 
+/**
+ * Segregation of duties: the approver may not be the preparer.
+ *
+ * Reads PreparedByUser, the foreign key migration 0007 added, and never the
+ * PreparedBy display string beside it. The string is what the printed form
+ * shows and it can be two different people spelled the same way, or one person
+ * spelled two ways; an identity check written against it either passes
+ * everything or blocks the wrong person. That the key was missing is why this
+ * check could not be written before Phase 1.
+ *
+ * There is no override. The plan states segregation of duties is enforced in
+ * code rather than policy, and an override is how it becomes policy again.
+ * Payrolls approved BEFORE this check existed are not revisited - three of them
+ * are self-approved and were grandfathered at Phase 1 sign-off as development
+ * records.
+ */
+function requireDifferentApprover(array $header, array $user): void
+{
+    $preparer = trim((string) ($header['PreparedByUser'] ?? ''));
+    if ($preparer === '' || $preparer !== $user['Email']) return;
+
+    throw new RuntimeException(
+        'You prepared this payroll, so you cannot also approve it. '
+        . 'Someone else with approval authority has to review it.');
+}
+
 /** Validated status transition + timestamps. */
 function payrollTransition(string $payrollNo, string $to, array $user): array
 {
@@ -365,6 +401,8 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
 
     $patch = ['Status' => $to];
     if ($to === 'Approved') {
+        requireDifferentApprover($header, $user);
+
         // As with PreparedBy on save: the display name for the printed form,
         // the key for the Phase 2 check that the approver is not the preparer.
         $patch['ApprovedBy'] = $user['FullName'] ?: $user['Email'];
@@ -481,8 +519,10 @@ function apiEmailPayslips(array $p, array $user): array
     $sent = 0;
     $skipped = 0;
     foreach ($details as $d) {
-        $emp = DB::row('SELECT Email FROM Employees WHERE EmployeeID = ?', [$d['EmployeeID']]);
-        if (!$emp || !isEmail($emp['Email'])) { $skipped++; continue; }
+        // The employee's address is Tier 2 - migration 0015 moved Email out of
+        // Employees along with the rest of their personal data.
+        $emp = EmployeeRepo::sensitive((string) $d['EmployeeID']);
+        if (!$emp || !isEmail($emp['Email'] ?? '')) { $skipped++; continue; }
 
         $rows = '';
         foreach ([['Gross Pay', $d['GrossPay']], ['Tax', $d['Tax']],

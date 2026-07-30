@@ -332,6 +332,8 @@ Pages.payroll = (function () {
           '<td class="text-money">' + fmtMoney(l.TotalDeductions) + '</td>' +
           '<td class="text-money fw-bold">' + fmtMoney(l.NetPay) + '</td></tr>';
       }).join('');
+      var official = OFFICIAL_STATUSES.indexOf(d.header.Status) !== -1;
+
       openModal('Payroll ' + no + ' - ' + d.header.Status,
         '<div class="table-responsive"><table class="table table-sm">' +
         '<thead><tr><th>#</th><th>Employee</th><th>Position</th><th>Rate</th><th>Days</th>' +
@@ -339,8 +341,53 @@ Pages.payroll = (function () {
         '</tbody><tfoot><tr class="grid-total-row"><td colspan="5" class="text-end">TOTAL</td>' +
         '<td class="text-money">' + fmtMoney(d.header.TotalGross) + '</td>' +
         '<td class="text-money">' + fmtMoney(d.header.TotalDeductions) + '</td>' +
-        '<td class="text-money">' + fmtMoney(d.header.TotalNet) + '</td></tr></tfoot></table></div>',
-        [{ label: 'Close', cls: 'btn-outline-secondary', onclick: closeModal }]);
+        '<td class="text-money">' + fmtMoney(d.header.TotalNet) + '</td></tr></tfoot></table></div>' +
+        // Said before the window opens rather than discovered after it. The
+        // server decides the marking from the stored status; this only reports
+        // what the reviewer is about to get.
+        (can('print.run') && !official
+          ? '<p class="small text-danger mb-0 mt-2"><span class="material-icons" ' +
+            'style="font-size:14px;vertical-align:-2px">info</span> ' +
+            'This payroll is ' + esc(d.header.Status) + '. Every form below prints marked ' +
+            '<strong>NOT OFFICIAL</strong> until it is approved.</p>'
+          : ''),
+        previewButtons(no).concat(
+          [{ label: 'Close', cls: 'btn-outline-secondary', onclick: closeModal }]));
+    });
+  }
+
+  /** Statuses whose printed forms are the official document. */
+  var OFFICIAL_STATUSES = ['Approved', 'Released'];
+
+  /**
+   * The four printable forms, for review before submitting or approving.
+   *
+   * Same mechanism the Print screen uses - print.php in a new window - rather
+   * than a second preview path. Reviewing the actual form is the point: a grid
+   * that resembles the payroll is not what gets signed.
+   */
+  function previewButtons(no) {
+    if (!can('print.run')) return [];
+
+    var forms = [
+      ['Payroll', 'payroll'],
+      ['Summary', 'summary'],
+      ['CAFOA', 'cafoa']
+    ];
+    // The Pag-IBIG list shows each employee's Pag-IBIG number and monthly
+    // rate, so the server refuses it without employee.sensitive. Hidden rather
+    // than offered and then refused.
+    if (can('employee.sensitive')) forms.splice(1, 0, ['HDMF/Pag-IBIG', 'pagibig']);
+
+    return forms.map(function (f) {
+      return {
+        label: f[0],
+        cls: 'btn-outline-primary',
+        onclick: function () {
+          window.open('print.php?no=' + encodeURIComponent(no) +
+            '&form=' + encodeURIComponent(f[1]), '_blank');
+        }
+      };
     });
   }
 

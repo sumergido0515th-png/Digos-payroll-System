@@ -9,45 +9,81 @@
 
 declare(strict_types=1);
 
-/** Permission matrix. '*' grants everything (Administrator only). */
+/**
+ * Permission matrix. '*' grants everything (Admin only).
+ *
+ * Phase 2 replaced the six original roles with the seven the phase plan
+ * defines. It was a remap of intent rather than a rename - migration 0016
+ * carries the old-to-new mapping and the reasoning for each.
+ *
+ * These are ACTIONS ONLY. No scope is baked in here: which offices a user may
+ * see is ScopeGrants, applied by Digos\Repo\ScopeGateway. Holding
+ * 'payroll.view' says you may look at payrolls, never at which ones - keeping
+ * the two separate is what lets one Pre-Auditor cover two offices and another
+ * cover one without inventing a role per office.
+ *
+ * 'employee.sensitive' is the Tier 2 gate added when migration 0015 split the
+ * restricted columns out. Note who does NOT hold it: an Encoder prepares
+ * payrolls without ever reading a rate, because the server computes from the
+ * rate rather than being handed one.
+ */
 const PERMISSIONS = [
-    'Administrator' => ['*'],
+    'Admin' => ['*'],
 
-    'HR' => [
+    // HRMO owns the employee record, including the restricted tier, and the
+    // office structure. No payroll authority at all.
+    'HRMO' => [
         'dashboard.view',
-        'employee.view', 'employee.edit',
+        'employee.view', 'employee.edit', 'employee.sensitive',
         'office.view', 'office.edit',
         'timekeeper.view', 'timekeeper.edit',
         'payroll.view', 'period.view',
         'report.view', 'print.run',
     ],
 
-    'Payroll Officer' => [
+    // Prepares and submits; never approves. The segregation of duties this
+    // project exists to enforce starts as the absence of 'payroll.approve'
+    // here, and is enforced again per payroll in payrollTransition().
+    'Payroll In-Charge' => [
         'dashboard.view',
-        'employee.view',
+        'employee.view', 'employee.sensitive',
         'office.view', 'timekeeper.view',
         'period.view', 'period.edit',
         'payroll.view', 'payroll.edit', 'payroll.submit',
         'report.view', 'print.run',
     ],
 
-    'Accounting' => [
+    // Verifies and approves; cannot create or edit. Reads the restricted tier
+    // because checking a daily rate against the contract is the job.
+    'Pre-Auditor' => [
         'dashboard.view',
-        'employee.view', 'office.view',
+        'employee.view', 'employee.sensitive',
+        'office.view',
         'period.view', 'payroll.view', 'payroll.approve', 'payroll.release',
         'report.view', 'print.run',
     ],
 
-    'Timekeeper' => [
+    // Keys the payroll. Deliberately without 'employee.sensitive'.
+    'Encoder' => [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view', 'payroll.edit', 'payroll.submit',
         'print.run',
     ],
 
-    'Viewer' => [
+    // Sees their own office's records; no editing, no approval. What makes the
+    // role useful is the scope grant, not the permission list.
+    'Office Head' => [
+        'dashboard.view',
+        'employee.view', 'office.view', 'timekeeper.view',
+        'period.view', 'payroll.view',
+        'report.view', 'print.run',
+    ],
+
+    // COA liaison. Read-only oversight, and the audit log with it.
+    'Internal Auditor' => [
         'dashboard.view', 'employee.view', 'office.view', 'timekeeper.view',
-        'period.view', 'payroll.view', 'report.view',
+        'period.view', 'payroll.view', 'report.view', 'log.view',
     ],
 ];
 

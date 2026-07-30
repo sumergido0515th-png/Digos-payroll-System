@@ -59,6 +59,35 @@ final class SourceTree
     }
 
     /**
+     * A file's source with comments removed.
+     *
+     * The guards match patterns like `DB::` as text, and a docblock saying
+     * "Pure: no DB::, no session, no clock" is prose about not doing the thing,
+     * not the thing. That false positive is not hypothetical - it fired on the
+     * Phase 2 access layer, whose whole point is that it never touches the
+     * database, and the only ways out were to reword accurate documentation or
+     * to add a clean file to a debt allowlist. Both would have made the guard
+     * mean less.
+     *
+     * Tokenising rather than regex-stripping, so this cannot itself introduce
+     * a blind spot: only T_COMMENT and T_DOC_COMMENT are dropped, and code
+     * inside strings is left exactly where it is.
+     */
+    public static function readCode(string $relative): string
+    {
+        $out = '';
+        foreach (token_get_all(self::read($relative)) as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) continue;
+                $out .= $token[1];
+                continue;
+            }
+            $out .= $token;
+        }
+        return $out;
+    }
+
+    /**
      * Parses the ROUTES table out of public/api.php as text, so the test does
      * not have to boot the application.
      *

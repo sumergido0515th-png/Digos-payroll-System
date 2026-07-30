@@ -59,7 +59,7 @@ On your machine:
 ```
 php tools/build-deploy.php
 ```
-
+  
 Produces:
 
 | Path | Contents |

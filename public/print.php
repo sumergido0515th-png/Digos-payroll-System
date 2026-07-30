@@ -17,8 +17,23 @@ try {
     if ($no === '') throw new RuntimeException('Missing payroll number (?no=...).');
     $form = (string) ($_GET['form'] ?? 'payroll');
 
-    writeLog($user['Email'], 'PRINT', 'Print', $no . ' [' . $form . ']');
-    echo buildFormHtml($no, $form);
+    // Resolved here as well as inside buildFormHtml, because the audit action
+    // depends on the payroll's status and that decision belongs outside the
+    // renderer. Two scoped lookups on a primary key is the cost.
+    //
+    // PREVIEW and PRINT are separate deliberately: "pages printed per period"
+    // is one of the project's post-launch metrics - the resource waste this
+    // system exists to reduce - and the review loop this screen supports is
+    // designed to produce many previews. Counting a reviewer opening a draft
+    // six times as six pages printed would make the baseline meaningless.
+    $header = \Digos\Repo\PayrollRepo::findScoped($user, $no);
+    if (!$header) throw new RuntimeException('Payroll not found: ' . $no);
+
+    $action = payrollPrintIsOfficial((string) $header['Status']) ? 'PRINT' : 'PREVIEW';
+    writeLog($user['Email'], $action, 'Print',
+        $no . ' [' . $form . '] ' . $header['Status']);
+
+    echo buildFormHtml($no, $form, $user);
 
 } catch (Throwable $e) {
     http_response_code(403);
