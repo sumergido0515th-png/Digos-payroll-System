@@ -170,8 +170,32 @@ Build before feature modules. Retrofitting scope onto finished modules means tou
 
 ## Phase 3 — Document Modules (CRUD Only)
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-07-31
 **Depends on:** Phase 2
+
+> Migration `0018` creates `Memorandum`, `MemorandumEmployees`, `BioExemptions`, `TravelOrders`
+> and `WorkShifts`; `Contracts` (from `0005`) gets its first write path. `app/Documents.php`,
+> four repositories, twenty routes, three new permission families and one page with five tabs.
+>
+> **The scope decisions are the part worth re-reading.** Memorandum carries `OfficeCode` and is
+> registered in `ScopeEntity`. Bio exemptions, travel orders and contracts carry **no office
+> code at all** — they are about a person, so their scope is that person's, applied through a
+> join to `Employees`. Copying the office onto the document would need keeping in step with
+> transfers, and the moment it fell behind there would be two answers to "whose row is this?".
+> `WorkShifts` is unscoped reference data: a shift definition is a rule about hours.
+> Memorandum coverage is checked **per employee**, because naming another office's employee on
+> your own memo would otherwise make coverage a write path into a scope you cannot read.
+>
+> Both versioned tables behave as designed: editing a shift or renewing a contract inserts a
+> row and closes the previous one the day before the new one starts. `amend()` on a contract is
+> deliberately narrow enough that a rate cannot be corrected in place.
+>
+> Verified by `DocumentModulesTest` (19 tests, passing alone), by reverting each of five
+> enforcements one at a time and confirming exactly the expected tests failed, and live over
+> HTTP as a scoped account. **The live probe found a defect the suite could not**: the employee
+> picker read `apiListEmployees` as a bare array when it answers `{total, page, pageSize, rows}`
+> — and at the default page size of 25 it would have silently omitted everybody after the
+> twenty-fifth name.
 
 ### Objective
 Get Memorandum, Bio Exemption, Travel Order, and Work Shift storing and listing correctly under scope — no business logic yet.
