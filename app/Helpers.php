@@ -73,10 +73,21 @@ function newId(string $prefix): string
         . '-' . random_int(100, 999);
 }
 
-/** Throws when a required field is missing/blank. */
+/**
+ * Throws when a required field is missing/blank.
+ *
+ * Arrays are checked for emptiness rather than cast. Casting one to a string
+ * yields "Array" - which is not empty, so an empty list of payroll lines or DTR
+ * days would have passed this check while emitting a warning. That went
+ * unnoticed until Phase 3B required its first array field.
+ */
 function requireFields(array $p, array $fields): void
 {
-    $missing = array_filter($fields, fn($f) => !isset($p[$f]) || trim((string) $p[$f]) === '');
+    $missing = array_filter($fields, function ($f) use ($p) {
+        if (!isset($p[$f])) return true;
+        return is_array($p[$f]) ? $p[$f] === [] : trim((string) $p[$f]) === '';
+    });
+
     if ($missing) {
         throw new RuntimeException('Required field(s) missing: ' . implode(', ', $missing));
     }

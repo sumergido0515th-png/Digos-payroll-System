@@ -18,6 +18,7 @@ require_once __DIR__ . '/Helpers.php';
 // is only ever defined once.
 require_once __DIR__ . '/Domain/Access/ScopeEntity.php';
 require_once __DIR__ . '/Domain/Access/ScopePredicate.php';
+require_once __DIR__ . '/Domain/Dtr/PeriodTotals.php';
 require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
 require_once __DIR__ . '/Repo/ScopeGateway.php';
 require_once __DIR__ . '/Repo/EmployeeRepo.php';
@@ -29,6 +30,7 @@ require_once __DIR__ . '/Repo/MemorandumRepo.php';
 require_once __DIR__ . '/Repo/EmployeeDocumentRepo.php';
 require_once __DIR__ . '/Repo/WorkShiftRepo.php';
 require_once __DIR__ . '/Repo/ContractRepo.php';
+require_once __DIR__ . '/Repo/DtrRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';
@@ -36,5 +38,6 @@ require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Master.php';
 require_once __DIR__ . '/Payroll.php';
 require_once __DIR__ . '/Documents.php';
+require_once __DIR__ . '/Dtr.php';
 require_once __DIR__ . '/Reports.php';
 require_once __DIR__ . '/PrintDoc.php';

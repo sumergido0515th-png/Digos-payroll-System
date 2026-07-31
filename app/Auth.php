@@ -44,6 +44,7 @@ const PERMISSIONS = [
         'document.view', 'document.edit', 'document.delete',
         'contract.view', 'contract.edit',
         'shift.view', 'shift.edit',
+        'dtr.view', 'dtr.edit', 'dtr.import',
         'report.view', 'print.run',
     ],
 
@@ -58,6 +59,7 @@ const PERMISSIONS = [
         'payroll.view', 'payroll.edit', 'payroll.submit',
         // Reads the documents a line is justified by; does not issue them.
         'document.view', 'contract.view', 'shift.view',
+        'dtr.view', 'dtr.edit', 'dtr.import',
         'report.view', 'print.run',
     ],
 
@@ -72,6 +74,8 @@ const PERMISSIONS = [
         // against the contract in force is the job, and from Phase 6 so is
         // checking a manual DTR entry against a covering bio exemption.
         'document.view', 'contract.view', 'shift.view',
+        // The pre-audit reads the day rows a payroll line was derived from.
+        'dtr.view',
         'report.view', 'print.run',
     ],
 
@@ -83,7 +87,9 @@ const PERMISSIONS = [
         // Sees the memo authorising the overtime being keyed, and the shift
         // that says what late means. No contract access - that is the rate,
         // and this role deliberately has no route to the restricted tier.
+        // Keying the DTR grid is the encoder's day job.
         'document.view', 'shift.view',
+        'dtr.view', 'dtr.edit',
         'print.run',
     ],
 
@@ -93,7 +99,7 @@ const PERMISSIONS = [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view',
-        'document.view', 'shift.view',
+        'document.view', 'shift.view', 'dtr.view',
         'report.view', 'print.run',
     ],
 
@@ -104,7 +110,7 @@ const PERMISSIONS = [
         // Read-only oversight extends to the documents an audit is conducted
         // against, contracts included - the whole point of the role is to be
         // able to check the same things a pre-auditor checked.
-        'document.view', 'contract.view', 'shift.view',
+        'document.view', 'contract.view', 'shift.view', 'dtr.view',
     ],
 ];
 

@@ -92,6 +92,13 @@ const ROUTES = [
     'apiSaveContract' => ['contract.edit', 'Contracts', 'SAVE_CONTRACT'],
     'apiAmendContract' => ['contract.edit', 'Contracts', 'AMEND_CONTRACT'],
 
+    // Daily time records (Phase 3B)
+    'apiGetDtrGrid' => ['dtr.view', 'DtrDays', ''],
+    'apiGetDtrTotals' => ['dtr.view', 'DtrDays', ''],
+    'apiSaveDtrDays' => ['dtr.edit', 'DtrDays', 'SAVE_DTR_DAYS'],
+    'apiDeleteDtrDay' => ['dtr.edit', 'DtrDays', 'DELETE_DTR_DAY'],
+    'apiImportBiometricLogs' => ['dtr.import', 'DtrDays', 'IMPORT_BIOMETRIC'],
+
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],

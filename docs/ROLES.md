@@ -21,13 +21,19 @@ reads nothing, whatever this table says.
 
 | Permission | Admin | HRMO | Payroll In-Charge | Pre-Auditor | Encoder | Office Head | Internal Auditor |
 |---|---|---|---|---|---|---|---|
+| `,
+        ` | yes | - | - | - | yes | - | - |
+| `, ` | yes | - | - | - | yes | - | - |
 | `backup.run` | yes | - | - | - | - | - | - |
 | `contract.edit` | yes | yes | - | - | - | - | - |
 | `contract.view` | yes | yes | yes | yes | - | - | yes |
 | `dashboard.view` | yes | yes | yes | yes | yes | yes | yes |
 | `document.delete` | yes | yes | - | - | - | - | - |
 | `document.edit` | yes | yes | - | - | - | - | - |
-| `document.view` | yes | yes | yes | yes | yes | yes | yes |
+| `document.view` | yes | yes | yes | yes | - | yes | yes |
+| `dtr.edit` | yes | yes | yes | - | - | - | - |
+| `dtr.import` | yes | yes | yes | - | - | - | - |
+| `dtr.view` | yes | yes | yes | yes | - | yes | yes |
 | `employee.delete` | yes | - | - | - | - | - | - |
 | `employee.edit` | yes | yes | - | - | - | - | - |
 | `employee.sensitive` | yes | yes | yes | yes | - | - | - |
@@ -42,13 +48,15 @@ reads nothing, whatever this table says.
 | `payroll.view` | yes | yes | yes | yes | yes | yes | yes |
 | `period.edit` | yes | - | yes | - | - | - | - |
 | `period.view` | yes | yes | yes | yes | yes | yes | yes |
-| `print.run` | yes | yes | yes | yes | yes | yes | - |
+| `print.run` | yes | yes | yes | yes | - | yes | - |
 | `report.view` | yes | yes | yes | yes | - | yes | yes |
+| `s day job.
+        ` | yes | - | - | - | yes | - | - |
 | `scope.manage` | yes | - | - | - | - | - | - |
 | `settings.edit` | yes | - | - | - | - | - | - |
 | `settings.view` | yes | - | - | - | - | - | - |
 | `shift.edit` | yes | yes | - | - | - | - | - |
-| `shift.view` | yes | yes | yes | yes | yes | yes | yes |
+| `shift.view` | yes | yes | yes | yes | - | yes | yes |
 | `timekeeper.edit` | yes | yes | - | - | - | - | - |
 | `timekeeper.view` | yes | yes | yes | - | yes | yes | yes |
 | `user.manage` | yes | - | - | - | - | - | - |
@@ -76,6 +84,9 @@ appears here by accident rather than by decision.
 - `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
 - `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder
 - `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
+- `dtr.edit` — apiDeleteDtrDay, apiSaveDtrDays
+- `dtr.import` — apiImportBiometricLogs
+- `dtr.view` — apiGetDtrGrid, apiGetDtrTotals
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
 - `employee.view` — apiGetEmployee, apiListEmployees

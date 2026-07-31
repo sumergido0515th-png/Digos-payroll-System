@@ -221,9 +221,33 @@ This is repetitive boilerplate — a good phase to move fast on. Save careful/ex
 
 ## Phase 3B — DTR Capture
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-07-31
 **Depends on:** Phase 3
 **Added:** 2026-07-28, settled revision 1 from the Phase 0 audit
+
+> **The seam.** Before this, a payroll line's six totals were typed straight onto the line and
+> nothing could say where they came from. They are now derived by
+> `Digos\Domain\Dtr\PeriodTotals`, which is pure — day rows in, totals out — and unit-tested
+> against fixtures. No migration: `DtrDays` has existed since `0008` with every column this
+> needs, including `Source`.
+>
+> **The classification is the part that matters.** `computeLine()` pays
+> `daily × DaysWorked + hourly × HoursWorked + overtime`, adding rather than choosing, so the
+> three have to stay disjoint or a full day is paid twice. A day at or over the standard length
+> is one whole day; a shorter worked day is hours; an absence is an absent day and nothing else.
+> A day with no hours and no absence contributes **nothing** — that is a rest day or an unworked
+> holiday, and deciding which is Phase 4's `resolveHoliday`, not a deduction taken here.
+>
+> **Provenance is written, not defaulted.** `Source` is set on every row, and the biometric
+> import refuses to overwrite a hand-keyed day — it reports those as conflicts instead. A manual
+> entry is a claim somebody made, and Phase 6 rule #1 checks it against a covering bio exemption;
+> replacing it with the device's version erases the discrepancy that check exists to find.
+>
+> Two entries came off `MigrationColumnsAreUsedTest`'s deferral list — `DtrDays.*` and
+> `Contracts.*`, both promises made in Phase 1 — leaving only database-maintained `UpdatedAt`
+> columns. A shared helper was fixed on the way through: `requireFields()` cast every value to a
+> string, so an array field warned and an **empty** array passed as `"Array"`. Nothing had
+> required an array field until now.
 
 ### Objective
 Put real per-date timekeeping into `DtrDays`, so the resolvers have an input.

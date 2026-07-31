@@ -44,6 +44,7 @@ if (empty($_SESSION['email'])) {
       <a class="nav-item-link" data-page="dashboard" data-perm="dashboard.view"><span class="material-icons">dashboard</span>Dashboard</a>
       <a class="nav-item-link" data-page="employees" data-perm="employee.view"><span class="material-icons">badge</span>Employees</a>
       <a class="nav-item-link" data-page="payroll" data-perm="payroll.view"><span class="material-icons">request_quote</span>Payroll Transactions</a>
+      <a class="nav-item-link" data-page="dtr" data-perm="dtr.view"><span class="material-icons">event_note</span>Daily Time Records</a>
       <a class="nav-item-link" data-page="documents" data-perm="document.view"><span class="material-icons">description</span>Authority Documents</a>
       <a class="nav-item-link" data-page="timekeepers" data-perm="timekeeper.view"><span class="material-icons">schedule</span>Timekeepers</a>
       <a class="nav-item-link" data-page="departments" data-perm="office.view"><span class="material-icons">apartment</span>Departments &amp; Offices</a>
@@ -89,6 +90,7 @@ if (empty($_SESSION['email'])) {
         include dirname(__DIR__) . '/views/employees.php';
         include dirname(__DIR__) . '/views/payroll.php';
         include dirname(__DIR__) . '/views/documents.php';
+        include dirname(__DIR__) . '/views/dtr.php';
         include dirname(__DIR__) . '/views/reports.php';
         include dirname(__DIR__) . '/views/print.php';
         include dirname(__DIR__) . '/views/settings.php';

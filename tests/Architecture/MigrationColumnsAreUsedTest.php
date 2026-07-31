@@ -45,13 +45,10 @@ final class MigrationColumnsAreUsedTest extends TestCase
      * @var array<string,string>
      */
     private const DEFERRED = [
-        // Phase 3B builds DTR capture; until then nothing writes a day row.
-        'DtrDays.*' => 'Phase 3B - DTR capture writes these',
-
-        // Contracts is deferred by decision, not oversight: 0005 exists to keep
-        // rate history, and mirroring the employee form's single start/end pair
-        // on every save is the overwrite it was built to prevent. Phase 3.
-        'Contracts.*' => 'Phase 3 - Contracts module, see PHASE_1_SIGNOFF.md decision 3',
+        // DtrDays.* and Contracts.* were both here. Phase 3B writes every DTR
+        // column through DtrRepo, and Phase 3 gave Contracts its first write
+        // path - so the two entries that had been promises since Phase 1 are
+        // collected. That is the whole point of this list shrinking.
 
         // Seeded reference data read through SELECT * and handed to the Phase 4
         // resolvers as a row; no code names these individually yet.
@@ -71,6 +68,8 @@ final class MigrationColumnsAreUsedTest extends TestCase
         'BioExemptions.UpdatedAt' => 'maintained by the database, never written by PHP',
         'TravelOrders.UpdatedAt' => 'maintained by the database, never written by PHP',
         'WorkShifts.UpdatedAt' => 'maintained by the database, never written by PHP',
+        'Contracts.UpdatedAt' => 'maintained by the database, never written by PHP',
+        'DtrDays.UpdatedAt' => 'maintained by the database, never written by PHP',
     ];
 
     /** Tables whose columns are structural rather than application data. */
