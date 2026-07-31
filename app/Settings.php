@@ -9,6 +9,9 @@
 
 declare(strict_types=1);
 
+use Digos\Repo\BackupRepo;
+use Digos\Repo\SettingsRepo;
+
 /**
  * Tables included in backups, parents before children.
  *
@@ -36,10 +39,7 @@ function settingsMap(bool $refresh = false): array
 {
     static $map = null;
     if ($map === null || $refresh) {
-        $map = [];
-        foreach (DB::rows('SELECT KeyName, Value FROM Settings') as $r) {
-            $map[$r['KeyName']] = $r['Value'];
-        }
+        $map = SettingsRepo::all();
     }
     return $map;
 }
@@ -54,8 +54,7 @@ function getSetting(string $key, string $fallback = ''): string
 /** Writes one setting (upsert) and refreshes the cache. */
 function setSetting(string $key, mixed $value): void
 {
-    DB::exec('INSERT INTO Settings (KeyName, Value) VALUES (?, ?)
-              ON DUPLICATE KEY UPDATE Value = VALUES(Value)', [$key, (string) $value]);
+    SettingsRepo::put($key, (string) $value);
     settingsMap(true);
 }
 
@@ -234,32 +233,9 @@ function runBackup(string $type, string $userEmail): array
     $name = 'PayrollDB_Backup_' . $stamp . '_' . random_int(100, 999) . '.sql';
     $path = BACKUP_DIR . DIRECTORY_SEPARATOR . $name;
 
-    $fh = fopen($path, 'wb');
-    if (!$fh) throw new RuntimeException('Cannot write backup file. Check php/backups permissions.');
+    BackupRepo::dumpTo($path, BACKUP_TABLES, $stamp);
+    BackupRepo::register(newId('BAK'), $name, $userEmail, $type);
 
-    fwrite($fh, "-- Digos Payroll backup $stamp\nSET FOREIGN_KEY_CHECKS=0;\n");
-    $pdo = DB::pdo();
-    foreach (BACKUP_TABLES as $table) {
-        fwrite($fh, "\nDELETE FROM `$table`;\n");
-        $st = $pdo->query("SELECT * FROM `$table`");
-        while ($row = $st->fetch()) {
-            $cols = '`' . implode('`,`', array_keys($row)) . '`';
-            $vals = implode(',', array_map(
-                fn($v) => $v === null ? 'NULL' : $pdo->quote((string) $v), array_values($row)));
-            fwrite($fh, "INSERT INTO `$table` ($cols) VALUES ($vals);\n");
-        }
-    }
-    fwrite($fh, "\nSET FOREIGN_KEY_CHECKS=1;\n");
-    fclose($fh);
-
-    $backupId = newId('BAK');
-    DB::insert('Backup', [
-        'BackupID' => $backupId,
-        'FileID' => $name,                      // file name doubles as the id
-        'FileName' => $name,
-        'User' => $userEmail ?: 'system',
-        'Type' => $type,
-    ]);
     return ['fileId' => $name, 'fileName' => $name];
 }
 
@@ -275,7 +251,7 @@ function apiListBackups(array $p, array $user): array
     return array_map(function ($b) {
         $b['Url'] = 'download.php?id=' . urlencode($b['FileID']);
         return $b;
-    }, DB::rows('SELECT * FROM Backup ORDER BY Timestamp DESC'));
+    }, BackupRepo::listAll());
 }
 
 /**
@@ -285,7 +261,7 @@ function apiListBackups(array $p, array $user): array
 function apiRestoreBackup(array $p, array $user): array
 {
     requireFields($p, ['FileID']);
-    $entry = DB::row('SELECT * FROM Backup WHERE FileID = ?', [$p['FileID']]);
+    $entry = BackupRepo::find($p['FileID']);
     if (!$entry) throw new RuntimeException('Unknown backup file.');
 
     $path = BACKUP_DIR . DIRECTORY_SEPARATOR . basename($entry['FileName']);
@@ -293,24 +269,7 @@ function apiRestoreBackup(array $p, array $user): array
 
     runBackup('Pre-restore safety', $user['Email']);
 
-    // Strip comment lines before splitting, not after.
-    //
-    // The old form skipped any chunk that *began* with "--", and the dump's
-    // first chunk is the header comment followed by SET FOREIGN_KEY_CHECKS=0 -
-    // so the one statement that makes a restore possible was the one statement
-    // never run. That was harmless while the schema had no foreign keys. Since
-    // 0009 added twenty, a restore would delete Employees with the constraints
-    // still live, cascading Contracts and DtrDays away before the inserts that
-    // refill them.
-    $sql = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($path));
-
-    DB::tx(function () use ($sql) {
-        foreach (explode(";\n", $sql) as $statement) {
-            $statement = trim($statement);
-            if ($statement === '') continue;
-            DB::pdo()->exec($statement);
-        }
-    });
+    BackupRepo::restoreFrom($path);
     settingsMap(true);
     return ['restored' => BACKUP_TABLES];
 }

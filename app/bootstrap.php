@@ -23,6 +23,8 @@ require_once __DIR__ . '/Repo/ScopeGateway.php';
 require_once __DIR__ . '/Repo/EmployeeRepo.php';
 require_once __DIR__ . '/Repo/PayrollRepo.php';
 require_once __DIR__ . '/Repo/ReferenceRepo.php';
+require_once __DIR__ . '/Repo/SettingsRepo.php';
+require_once __DIR__ . '/Repo/BackupRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';

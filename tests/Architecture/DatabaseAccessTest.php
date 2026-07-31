@@ -46,7 +46,15 @@ final class DatabaseAccessTest extends TestCase
         // roles. It was missed by the first scope audit because that audit
         // looked at routes with no audit action, and this one logs RUN_REPORT.
         // Five left.
-        'app/Settings.php',
+        // app/Settings.php was here. Removed with SettingsRepo and BackupRepo.
+        // Neither is scoped and neither can be - a setting is one row for the
+        // whole installation, and a backup scoped to one office restores to a
+        // subset while deleting the rest. They are repositories anyway, because
+        // the guard's value is that "no DB:: outside app/Repo/" needs no
+        // per-file judgement to enforce. BackupRepo is also the one sanctioned
+        // holder of a raw PDO handle: a dump enumerates whole tables and a
+        // restore executes statements it did not compose, and neither can be a
+        // prepared statement. Four left.
         'public/download.php',
     ];
 

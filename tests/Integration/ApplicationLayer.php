@@ -50,6 +50,8 @@ final class ApplicationLayer
             'app/Repo/EmployeeRepo.php',
             'app/Repo/PayrollRepo.php',
             'app/Repo/ReferenceRepo.php',
+            'app/Repo/SettingsRepo.php',
+            'app/Repo/BackupRepo.php',
             'app/Settings.php',
             'app/Auth.php',
             'app/Access.php',

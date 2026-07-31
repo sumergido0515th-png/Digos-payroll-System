@@ -94,7 +94,7 @@ Slowest phase per unit of code produced; spend the time here. A schema mistake c
 
 ## Phase 2 — Auth & Scope Layer
 
-**Status:** IN PROGRESS — session A complete 2026-07-29; **session B outstanding**
+**Status:** DONE — signed off 2026-07-31
 **Depends on:** Phase 1
 
 > **Session A landed: the model and the gate.** Migrations `0015`–`0017` (the physical
@@ -131,9 +131,20 @@ Slowest phase per unit of code produced; spend the time here. A schema mistake c
 > left), and [ROLES.md](ROLES.md) — the phase's second deliverable — is now generated from
 > `PERMISSIONS` rather than hand-written, with `--check` to catch drift.
 >
-> **Still outstanding:** `Settings.php` behind a repository. `Auth.php` and
-> `public/download.php` stay listed on purpose — `Auth.php` reads `Users` to authenticate,
-> which cannot be scoped by a layer that does not yet know who is asking.
+> **Closed 2026-07-31.** `Settings.php` went behind `SettingsRepo` and `BackupRepo`, leaving
+> **four** files on the allowlist: `Auth.php`, `Master.php`, `Payroll.php` and
+> `public/download.php`. Those stay listed on purpose — `Auth.php` reads `Users` to
+> authenticate, which cannot be scoped by a layer that does not yet know who is asking.
+> `BackupRepo` is also the one sanctioned holder of a raw PDO handle: a dump enumerates whole
+> tables and a restore executes statements it did not compose, and neither can be a prepared
+> statement.
+>
+> Two guards were added on the way out, both for failures the suite could not have caught.
+> `RepoLoadingTest` fails when a repository is missing from `app/bootstrap.php` or
+> `tests/Integration/ApplicationLayer.php` — there is no autoloader, both lists are
+> maintained by hand, and missing the first is a fatal in production while missing the second
+> is a green suite hiding a broken application. `BackupRestoreTest` executes the disaster
+> path for the first time: dump, destroy, restore, and the value comes back.
 
 ### Objective
 Build role × scope access control before any feature module, so nothing needs retrofitting.
