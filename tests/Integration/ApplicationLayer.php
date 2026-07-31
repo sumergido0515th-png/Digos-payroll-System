@@ -52,11 +52,16 @@ final class ApplicationLayer
             'app/Repo/ReferenceRepo.php',
             'app/Repo/SettingsRepo.php',
             'app/Repo/BackupRepo.php',
+            'app/Repo/MemorandumRepo.php',
+            'app/Repo/EmployeeDocumentRepo.php',
+            'app/Repo/WorkShiftRepo.php',
+            'app/Repo/ContractRepo.php',
             'app/Settings.php',
             'app/Auth.php',
             'app/Access.php',
             'app/Master.php',
             'app/Payroll.php',
+            'app/Documents.php',
             // PrintDoc last, as app/bootstrap.php loads it. It was missing here
             // and PrintScopeTest still passed in a full run, because
             // tests/Unit/EmployeesFunctionTest.php requires the file and the

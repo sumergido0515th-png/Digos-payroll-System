@@ -29,6 +29,10 @@ use Digos\Repo\SettingsRepo;
 const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Functions',
     'Employees', 'EmployeeSensitive', 'Contracts', 'Timekeepers', 'PayrollPeriods', 'DtrDays',
     'Payroll', 'PayrollDetails', 'Logs', 'Settings', 'Counters',
+    // Phase 3's documents. Memorandum before MemorandumEmployees, and both
+    // after Employees, because restore DELETEs and re-INSERTs in this order
+    // and the junction's two foreign keys have to have somewhere to point.
+    'Memorandum', 'MemorandumEmployees', 'BioExemptions', 'TravelOrders', 'WorkShifts',
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.

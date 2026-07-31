@@ -38,6 +38,12 @@ const PERMISSIONS = [
         'office.view', 'office.edit',
         'timekeeper.view', 'timekeeper.edit',
         'payroll.view', 'period.view',
+        // HRMO owns the authority documents for the same reason it owns the
+        // employee record: a memorandum, a bio exemption and a travel order are
+        // personnel instruments, and the contract is the engagement itself.
+        'document.view', 'document.edit', 'document.delete',
+        'contract.view', 'contract.edit',
+        'shift.view', 'shift.edit',
         'report.view', 'print.run',
     ],
 
@@ -50,6 +56,8 @@ const PERMISSIONS = [
         'office.view', 'timekeeper.view',
         'period.view', 'period.edit',
         'payroll.view', 'payroll.edit', 'payroll.submit',
+        // Reads the documents a line is justified by; does not issue them.
+        'document.view', 'contract.view', 'shift.view',
         'report.view', 'print.run',
     ],
 
@@ -60,6 +68,10 @@ const PERMISSIONS = [
         'employee.view', 'employee.sensitive',
         'office.view',
         'period.view', 'payroll.view', 'payroll.approve', 'payroll.release',
+        // The pre-audit is conducted against these. Checking a daily rate
+        // against the contract in force is the job, and from Phase 6 so is
+        // checking a manual DTR entry against a covering bio exemption.
+        'document.view', 'contract.view', 'shift.view',
         'report.view', 'print.run',
     ],
 
@@ -68,6 +80,10 @@ const PERMISSIONS = [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view', 'payroll.edit', 'payroll.submit',
+        // Sees the memo authorising the overtime being keyed, and the shift
+        // that says what late means. No contract access - that is the rate,
+        // and this role deliberately has no route to the restricted tier.
+        'document.view', 'shift.view',
         'print.run',
     ],
 
@@ -77,6 +93,7 @@ const PERMISSIONS = [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view',
+        'document.view', 'shift.view',
         'report.view', 'print.run',
     ],
 
@@ -84,6 +101,10 @@ const PERMISSIONS = [
     'Internal Auditor' => [
         'dashboard.view', 'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view', 'report.view', 'log.view',
+        // Read-only oversight extends to the documents an audit is conducted
+        // against, contracts included - the whole point of the role is to be
+        // able to check the same things a pre-auditor checked.
+        'document.view', 'contract.view', 'shift.view',
     ],
 ];
 

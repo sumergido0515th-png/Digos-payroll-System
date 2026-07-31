@@ -22,7 +22,12 @@ reads nothing, whatever this table says.
 | Permission | Admin | HRMO | Payroll In-Charge | Pre-Auditor | Encoder | Office Head | Internal Auditor |
 |---|---|---|---|---|---|---|---|
 | `backup.run` | yes | - | - | - | - | - | - |
+| `contract.edit` | yes | yes | - | - | - | - | - |
+| `contract.view` | yes | yes | yes | yes | - | - | yes |
 | `dashboard.view` | yes | yes | yes | yes | yes | yes | yes |
+| `document.delete` | yes | yes | - | - | - | - | - |
+| `document.edit` | yes | yes | - | - | - | - | - |
+| `document.view` | yes | yes | yes | yes | yes | yes | yes |
 | `employee.delete` | yes | - | - | - | - | - | - |
 | `employee.edit` | yes | yes | - | - | - | - | - |
 | `employee.sensitive` | yes | yes | yes | yes | - | - | - |
@@ -42,6 +47,8 @@ reads nothing, whatever this table says.
 | `scope.manage` | yes | - | - | - | - | - | - |
 | `settings.edit` | yes | - | - | - | - | - | - |
 | `settings.view` | yes | - | - | - | - | - | - |
+| `shift.edit` | yes | yes | - | - | - | - | - |
+| `shift.view` | yes | yes | yes | yes | yes | yes | yes |
 | `timekeeper.edit` | yes | yes | - | - | - | - | - |
 | `timekeeper.view` | yes | yes | yes | - | yes | yes | yes |
 | `user.manage` | yes | - | - | - | - | - | - |
@@ -63,7 +70,12 @@ appears here by accident rather than by decision.
 
 - (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
 - `backup.run` — apiBackupNow, apiListBackups, apiRestoreBackup
+- `contract.edit` — apiAmendContract, apiSaveContract
+- `contract.view` — apiGetContractHistory, apiListContracts
 - `dashboard.view` — apiGetDashboard, apiGetLookups
+- `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
+- `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder
+- `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
 - `employee.view` — apiGetEmployee, apiListEmployees
@@ -82,6 +94,8 @@ appears here by accident rather than by decision.
 - `scope.manage` — apiDeleteScopeGrant, apiGetScopeDimensions, apiListScopeGrants, apiSaveScopeGrant
 - `settings.edit` — apiApplyBackupSchedule, apiSaveSettings, apiUploadImageSetting
 - `settings.view` — apiGetSettings
+- `shift.edit` — apiSaveWorkShift
+- `shift.view` — apiGetWorkShiftHistory, apiListWorkShifts
 - `timekeeper.edit` — apiDeleteTimekeeper, apiSaveTimekeeper
 - `timekeeper.view` — apiListTimekeepers
 - `user.manage` — apiDeleteUser, apiGetRoles, apiListUsers, apiSaveUser

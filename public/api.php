@@ -70,6 +70,28 @@ const ROUTES = [
     'apiUndoLast' => ['payroll.edit', 'Payroll', 'UNDO'],
     'apiEmailPayslips' => ['payroll.release', 'Payroll', 'EMAIL_PAYSLIPS'],
 
+    // Documents (Phase 3)
+    'apiListMemoranda' => ['document.view', 'Memorandum', ''],
+    'apiGetMemorandum' => ['document.view', 'Memorandum', ''],
+    'apiSaveMemorandum' => ['document.edit', 'Memorandum', 'SAVE_MEMORANDUM'],
+    'apiDeleteMemorandum' => ['document.delete', 'Memorandum', 'DELETE_MEMORANDUM'],
+    'apiListBioExemptions' => ['document.view', 'BioExemptions', ''],
+    'apiSaveBioExemption' => ['document.edit', 'BioExemptions', 'SAVE_BIO_EXEMPTION'],
+    'apiDeleteBioExemption' => ['document.delete', 'BioExemptions', 'DELETE_BIO_EXEMPTION'],
+    'apiListTravelOrders' => ['document.view', 'TravelOrders', ''],
+    'apiSaveTravelOrder' => ['document.edit', 'TravelOrders', 'SAVE_TRAVEL_ORDER'],
+    'apiDeleteTravelOrder' => ['document.delete', 'TravelOrders', 'DELETE_TRAVEL_ORDER'],
+
+    // Work shifts and contracts are versioned: saving supersedes, never
+    // overwrites, so there is no delete route for either.
+    'apiListWorkShifts' => ['shift.view', 'WorkShifts', ''],
+    'apiGetWorkShiftHistory' => ['shift.view', 'WorkShifts', ''],
+    'apiSaveWorkShift' => ['shift.edit', 'WorkShifts', 'SAVE_WORK_SHIFT'],
+    'apiListContracts' => ['contract.view', 'Contracts', ''],
+    'apiGetContractHistory' => ['contract.view', 'Contracts', ''],
+    'apiSaveContract' => ['contract.edit', 'Contracts', 'SAVE_CONTRACT'],
+    'apiAmendContract' => ['contract.edit', 'Contracts', 'AMEND_CONTRACT'],
+
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],

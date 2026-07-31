@@ -25,11 +25,16 @@ require_once __DIR__ . '/Repo/PayrollRepo.php';
 require_once __DIR__ . '/Repo/ReferenceRepo.php';
 require_once __DIR__ . '/Repo/SettingsRepo.php';
 require_once __DIR__ . '/Repo/BackupRepo.php';
+require_once __DIR__ . '/Repo/MemorandumRepo.php';
+require_once __DIR__ . '/Repo/EmployeeDocumentRepo.php';
+require_once __DIR__ . '/Repo/WorkShiftRepo.php';
+require_once __DIR__ . '/Repo/ContractRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';
 require_once __DIR__ . '/Auth.php';
 require_once __DIR__ . '/Master.php';
 require_once __DIR__ . '/Payroll.php';
+require_once __DIR__ . '/Documents.php';
 require_once __DIR__ . '/Reports.php';
 require_once __DIR__ . '/PrintDoc.php';
