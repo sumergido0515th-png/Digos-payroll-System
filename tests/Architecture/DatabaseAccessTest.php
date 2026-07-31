@@ -40,7 +40,12 @@ final class DatabaseAccessTest extends TestCase
         // office's payroll while apiGetPrintHtml rendered the same number in
         // full. Reads now go through PayrollRepo, EmployeeRepo and
         // ReferenceRepo. Six left.
-        'app/Reports.php',
+        // app/Reports.php was here. Removed when the dashboard and the report
+        // engine were scoped: apiRunReport ran every report citywide whatever
+        // the caller's grants, and report.view is held by five of the seven
+        // roles. It was missed by the first scope audit because that audit
+        // looked at routes with no audit action, and this one logs RUN_REPORT.
+        // Five left.
         'app/Settings.php',
         'public/download.php',
     ];

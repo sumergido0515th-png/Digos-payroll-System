@@ -29,6 +29,29 @@ use DB;
 
 final class ReferenceRepo
 {
+    /**
+     * Every payroll period.
+     *
+     * A period is a calendar fortnight, not anybody's payroll, and every scoped
+     * user needs its label to read their own rows. Unscoped for the reason at
+     * the top of this class.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function periods(): array
+    {
+        return DB::rows('SELECT * FROM PayrollPeriods');
+    }
+
+    /** How many offices and departments exist - structure, not payroll data. */
+    public static function structureCounts(): array
+    {
+        return [
+            'departments' => (int) DB::scalar('SELECT COUNT(*) FROM Departments'),
+            'offices' => (int) DB::scalar('SELECT COUNT(*) FROM Offices'),
+        ];
+    }
+
     /** A payroll period by id, or [] when it no longer exists. */
     public static function period(string $periodId): array
     {

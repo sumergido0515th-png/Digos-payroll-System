@@ -108,12 +108,43 @@ final class EmployeeRepo
     }
 
     /**
-     * Both tiers, unscoped - the payroll engine's path.
+     * Both tiers, restricted to employees the caller may see.
+     *
+     * For computing a payroll line where there is no saved payroll to check
+     * the caller against - the grid preview. findForComputation() below is
+     * safe only because apiSavePayroll has already checked the scope of the
+     * payroll being saved; apiComputePayroll has no such payroll, so using
+     * that method there let any holder of `payroll.view` post one line naming
+     * any employee in any office and read that employee's daily rate back out
+     * of the computed line. Encoder, Office Head and Internal Auditor hold
+     * `payroll.view` and none of them hold `employee.sensitive`.
+     *
+     * The rate itself is not the leak - a preparer legitimately sees the rate
+     * on a line they are preparing, and the printed payroll form shows it.
+     * WHOSE rate is the leak, so this scopes and does not gate on permission.
+     */
+    public static function findForComputationScoped(array $user, string $employeeId): ?array
+    {
+        $scope = ScopeGateway::where($user, 'Employees', 'e.');
+
+        return DB::row(
+            'SELECT e.*, ' . self::sensitiveSelect()
+            . ' FROM Employees e
+                 LEFT JOIN EmployeeSensitive s ON s.EmployeeID = e.EmployeeID
+                WHERE ' . $scope['sql'] . ' AND e.EmployeeID = ?',
+            array_merge($scope['params'], [$employeeId]));
+    }
+
+    /**
+     * Both tiers, unscoped - the save path's lookup.
      *
      * computeLine() computes from DailyRate and HourlyRate, so preparing a
      * payroll genuinely requires the restricted tier. It is not a scope bypass:
      * apiSavePayroll checks the caller's scope against the payroll's charged
      * office before it gets here, and refuses an employee it may not pay.
+     *
+     * Any NEW caller without that prior check wants findForComputationScoped()
+     * above instead. That distinction is the whole reason both exist.
      */
     public static function findForComputation(string $employeeId): ?array
     {
@@ -123,6 +154,34 @@ final class EmployeeRepo
                  LEFT JOIN EmployeeSensitive s ON s.EmployeeID = e.EmployeeID
                 WHERE e.EmployeeID = ?',
             [$employeeId]);
+    }
+
+    /**
+     * Headcount within scope: total, and the two employment types the
+     * dashboard splits on.
+     *
+     * Tier 1 only - a count is not a disclosure of anyone's rate. What it was
+     * disclosing before this existed is how many people another office employs.
+     *
+     * @return array{total:int, jo:int, cos:int}
+     */
+    public static function countsScoped(array $user): array
+    {
+        $scope = ScopeGateway::where($user, 'Employees', 'e.');
+
+        $row = DB::row(
+            "SELECT COUNT(*) AS total,
+                    SUM(e.Status = 'Active' AND e.EmploymentType = 'Job Order') AS jo,
+                    SUM(e.Status = 'Active' AND e.EmploymentType = 'Contract of Service') AS cos
+               FROM Employees e
+              WHERE " . $scope['sql'],
+            $scope['params']) ?? [];
+
+        return [
+            'total' => (int) ($row['total'] ?? 0),
+            'jo' => (int) ($row['jo'] ?? 0),
+            'cos' => (int) ($row['cos'] ?? 0),
+        ];
     }
 
     /** The restricted tier alone, by id. */

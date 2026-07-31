@@ -118,9 +118,22 @@ Slowest phase per unit of code produced; spend the time here. A schema mistake c
 > screen now shows submitted payrolls by default, so a correction can be re-scanned and
 > re-previewed without changing a filter.
 >
-> **Session B remains:** move `Reports.php`, `Settings.php`, `Auth.php` and
-> `public/download.php` behind repositories and shrink the allowlist further;
-> redact `duplicateEmployees()`; scope the dashboard.
+> **Session B, 2026-07-31 — the leaks the allowlist was not measuring.** A scope audit of
+> every read route found four that still returned other offices' data. The worst was
+> `apiComputePayroll`: it took any `EmployeeID`, looked it up unscoped and returned that
+> person's daily rate, gated on `payroll.view` alone — which Encoder, Office Head and
+> Internal Auditor hold and none of them hold `employee.sensitive`. `apiRunReport` was
+> running **every report citywide**, and it was missed by the first audit because that
+> audit only looked at routes with no audit action and this one logs `RUN_REPORT`.
+> `duplicateEmployees()` handed back other offices' employee names and payroll numbers,
+> where the plan calls for a redacted finding. The dashboard showed citywide headcount and
+> money to every role. All four are closed, `Reports.php` is off the allowlist (five files
+> left), and [ROLES.md](ROLES.md) — the phase's second deliverable — is now generated from
+> `PERMISSIONS` rather than hand-written, with `--check` to catch drift.
+>
+> **Still outstanding:** `Settings.php` behind a repository. `Auth.php` and
+> `public/download.php` stay listed on purpose — `Auth.php` reads `Users` to authenticate,
+> which cannot be scoped by a layer that does not yet know who is asking.
 
 ### Objective
 Build role × scope access control before any feature module, so nothing needs retrofitting.
@@ -430,10 +443,7 @@ One live payroll period processed end-to-end with zero manual override needed.
 - **Assign every office a real Function/PPA code.** *(Phase 1 sign-off, 2026-07-29: owner is entering these; open until confirmed.)* All four offices, five payrolls and five payroll lines carry `FunctionCode = NULL` after the `0004`/`0006`/`0014` backfills, because three offices store `9999` and one `8721` — none of them a code or a name in `Functions`. This is data entry, not code, and it is a **prerequisite for Phase 6's CAFOA rules to mean anything**: a rule that checks the charged appropriation with nothing to check does not fail, it passes. Dropdown at Departments & Offices → edit an office → "Function / PPA charged". See [SCHEMA.md § Known-unresolved data](SCHEMA.md#known-unresolved-data-surfaced-by-the-backfills).
 - **Three of five existing payrolls were self-approved** — `PR-2026-000001`, `PR-2026-000003`, `DIG-2026-000004` (`PreparedByUser == ApprovedByUser`, visible for the first time since `0007`). **Settled at Phase 1 sign-off, 2026-07-29: grandfathered as development records**, not disbursement history. Phase 2 prohibits self-approval from that point forward. **Phase 7 must not assume every historical approval passes the new rule** — the workflow it builds runs over these three rows.
 - **MariaDB 10.4 → 10.11 LTS upgrade.** `GAP_MAP` finding 6: 10.4 has been end of life since June 2024, CI already proves both versions, and the gap map argued it was cheapest *before* Phase 1 froze the schema. That window has now closed — re-cost it rather than assume it is still cheap.
-- ~~**`Contracts` needs its own module with supersession semantics.**~~ **Triaged into Phase 3 at Phase 1 sign-off, 2026-07-29** — see that phase's task list. One of three employees has no contract row until it lands.
-- **No guard stops a new nullable column from never being written.** The Phase 1 columns sat unwritten by `app/` for a day before anyone measured it (see [SCHEMA.md](SCHEMA.md#the-backfills-were-not-enough--the-write-paths-were-never-wired)). An architecture test asserting that every column a migration adds is referenced somewhere in `app/` would have caught it the same day.
 - **Branding is unenforced by any guard.** `IMAGE_SETTINGS` in `app/Settings.php` is an allowlist of settings that accept an upload; nothing fails if a future setting is added to the form but not to that list. Consider an architecture test if the list grows past the current two.
-- **`oceem@digos.gov.ph` still holds no scope grant** and therefore reads nothing. This is correct deny-by-default, and the remedy is now two clicks — **Users → Scope Grants → New Grant** — rather than an `INSERT`. It stays logged because it is a data decision only the owner can make: which office that account actually covers. Same shape as the Function/PPA item above.
 - **`Users.OfficeCode` is empty on every user, and is not a foreign key.** Both accounts store `''`, which is not an office; `Users` is the one table `0009` left unreferenced in that direction. Phase 2's scope grants key off user → office, so the column has to mean something before the gateway can read it — and `''` will not fail a foreign key that does not exist. Decide in Phase 2 whether the column stays or is superseded outright by `scope_grant`, which carries `office_id` itself.
 - **Two offices are duplicates.** `OCEEM` and `OCM` are both named "OCEEM public market", and payroll history now hangs off both (`DIG-2026-000004` charges `OCM`). Merging them after Phase 2 means rewriting scope grants as well as payroll rows; it is cheapest now and it is data entry, not code. Related to the Function/PPA item above — the same four offices need attention either way.
 - **Deleting an employee still cascades their contract and DTR history away.** `apiDeleteEmployee` refuses when the employee appears on a payroll line, but `Contracts` and `DtrDays` are `ON DELETE CASCADE`, so an employee never yet paid loses their rate history and timekeeping silently. Harmless while `DtrDays` is empty; revisit when Phase 3B fills it.

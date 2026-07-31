@@ -173,9 +173,12 @@ function apiComputePayroll(array $p, array $user): array
     $cfg = computationConfig();
     $lines = [];
     foreach ($p['lines'] ?? [] as $l) {
-        // Both tiers: computeLine() computes from DailyRate and HourlyRate,
-        // which migration 0015 moved to EmployeeSensitive.
-        $emp = EmployeeRepo::findForComputation((string) ($l['EmployeeID'] ?? ''));
+        // Scoped, unlike the save path below it. There is no saved payroll here
+        // to check the caller against - this is the grid preview - so the check
+        // has to be on the employee. Out of scope reports the same "not found"
+        // as a bad id, as apiGetPayroll and printBundle do: saying which of the
+        // two it was confirms that the employee exists.
+        $emp = EmployeeRepo::findForComputationScoped($user, (string) ($l['EmployeeID'] ?? ''));
         if (!$emp) throw new RuntimeException('Employee not found: ' . ($l['EmployeeID'] ?? '?'));
         $lines[] = computeLine($emp, $l, $cfg);
     }
@@ -250,7 +253,7 @@ function apiSavePayroll(array $p, array $user): array
     }
 
     if (empty($p['allowDuplicates'])) {
-        $clashes = duplicateEmployees($p['PeriodID'], $p['PayrollNo'] ?? '', $ids);
+        $clashes = duplicateEmployees($p['PeriodID'], $p['PayrollNo'] ?? '', $ids, $user);
         if ($clashes) {
             throw new RuntimeException('Already on another payroll this period: '
                 . implode('; ', $clashes) . '. Tick "Allow duplicates" to override.');
@@ -328,19 +331,58 @@ function apiSavePayroll(array $p, array $user): array
     });
 }
 
-/** Employees already on another non-cancelled payroll of the same period. */
-function duplicateEmployees(string $periodId, string $exceptPayrollNo, array $employeeIds): array
+/**
+ * Employees already on another non-cancelled payroll of the same period.
+ *
+ * REDACTED ACROSS SCOPE. This is the cross-scope conflict check the phase plan
+ * describes: the lookup has to run system-wide, because an employee paid twice
+ * in one period is the finding whatever office did it - but the answer must not
+ * carry another office's employee names and payroll numbers back to whoever
+ * happened to type that employee's id.
+ *
+ * In scope, the caller sees what they always saw. Out of scope they are told
+ * that a clash exists and nothing more, which is enough to act on: tick "Allow
+ * duplicates" or take the person off the grid. Full detail needs `scope.manage`
+ * - the same permission that administers scope is the one that may look across
+ * it.
+ *
+ * @return string[] human-readable clash descriptions
+ */
+function duplicateEmployees(string $periodId, string $exceptPayrollNo, array $employeeIds, array $user): array
 {
     if (!$employeeIds) return [];
     $ph = implode(',', array_fill(0, count($employeeIds), '?'));
+
     $rows = DB::rows(
-        "SELECT d.EmployeeName, d.PayrollNo
+        "SELECT d.EmployeeName, d.PayrollNo, d.ChargedOfficeCode
            FROM PayrollDetails d
            JOIN Payroll h ON h.PayrollNo = d.PayrollNo
           WHERE h.PeriodID = ? AND h.Status <> 'Cancelled' AND h.PayrollNo <> ?
             AND d.EmployeeID IN ($ph)",
         array_merge([$periodId, $exceptPayrollNo], array_values($employeeIds)));
-    return array_map(fn($r) => $r['EmployeeName'] . ' (' . $r['PayrollNo'] . ')', $rows);
+
+    if (!$rows) return [];
+
+    $seesEverything = hasPermission($user, 'scope.manage');
+
+    $visible = [];
+    $redacted = 0;
+    foreach ($rows as $r) {
+        $inScope = $seesEverything || ScopeGateway::permits($user, 'PayrollDetails', [
+            'OfficeCode' => $r['ChargedOfficeCode'],
+        ], 'read');
+
+        if ($inScope) {
+            $visible[] = $r['EmployeeName'] . ' (' . $r['PayrollNo'] . ')';
+        } else {
+            $redacted++;
+        }
+    }
+
+    if ($redacted > 0) {
+        $visible[] = $redacted . ' more on another office\'s payroll you do not have access to';
+    }
+    return $visible;
 }
 
 /** Deletes a Draft payroll and its lines. */

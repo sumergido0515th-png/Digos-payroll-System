@@ -58,12 +58,6 @@ final class ScopeEntity
         ],
     ];
 
-    /** True when the entity is under scope enforcement. */
-    public static function isScoped(string $entity): bool
-    {
-        return isset(self::MAP[$entity]);
-    }
-
     /** Every scoped entity name, for tests and diagnostics. */
     public static function names(): array
     {

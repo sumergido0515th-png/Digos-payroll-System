@@ -85,9 +85,81 @@ final class PayrollRepo
             array_merge($scope['params'], [$payrollNo]));
     }
 
-    /** The header without any scope applied - for paths that have already checked. */
-    public static function find(string $payrollNo): ?array
+    /**
+     * Gross and net per period-month, newest first, within scope.
+     *
+     * The dashboard's chart. Aggregated in SQL rather than in PHP because the
+     * GROUP BY is the point - but the scope predicate goes in the same WHERE as
+     * every other read, so an office-scoped user's chart is their own office's
+     * money and not the city's.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function monthlyTotalsScoped(array $user, int $limit = 12): array
     {
-        return DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$payrollNo]);
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+
+        return DB::rows(
+            "SELECT pd.PayrollYear, pd.PayrollMonth, MIN(pd.StartDate) AS SortDate,
+                    SUM(h.TotalGross) AS gross, SUM(h.TotalNet) AS net, COUNT(*) AS count
+               FROM Payroll h
+               JOIN PayrollPeriods pd ON pd.PeriodID = h.PeriodID
+              WHERE " . $scope['sql'] . " AND h.Status <> 'Cancelled'
+              GROUP BY pd.PayrollYear, pd.PayrollMonth
+              ORDER BY SortDate DESC
+              LIMIT " . max(1, $limit),
+            $scope['params']);
     }
+
+    /**
+     * Non-cancelled headers within scope, for the report engine.
+     *
+     * Separate from listScoped() because reporting excludes Cancelled by rule
+     * rather than by filter, and takes no free-text search.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function forReportingScoped(array $user, array $filters): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll');
+
+        $sql = "SELECT * FROM Payroll WHERE " . $scope['sql'] . " AND Status <> 'Cancelled'";
+        $params = $scope['params'];
+
+        foreach (['PeriodID', 'OfficeCode', 'Department'] as $f) {
+            if (!empty($filters[$f])) { $sql .= " AND `$f` = ?"; $params[] = $filters[$f]; }
+        }
+        return DB::rows($sql, $params);
+    }
+
+    /**
+     * Detail lines of the given payrolls, themselves scoped by charged office.
+     *
+     * Scoped a second time on purpose: a user who may read a payroll header
+     * still only reports on the lines charged within their own scope, which is
+     * what lets one payroll spanning two offices be reported by both without
+     * either seeing the other's people.
+     *
+     * @param string[] $payrollNos
+     * @return array<int, array<string, mixed>>
+     */
+    public static function detailsForReportingScoped(
+        array $user,
+        array $payrollNos,
+        string $employeeId = ''
+    ): array {
+        if (!$payrollNos) return [];
+
+        $scope = ScopeGateway::where($user, 'PayrollDetails');
+        $ph = implode(',', array_fill(0, count($payrollNos), '?'));
+
+        $sql = 'SELECT * FROM PayrollDetails
+                 WHERE ' . $scope['sql'] . " AND PayrollNo IN ($ph)";
+        $params = array_merge($scope['params'], array_values($payrollNos));
+
+        if ($employeeId !== '') { $sql .= ' AND EmployeeID = ?'; $params[] = $employeeId; }
+
+        return DB::rows($sql . ' ORDER BY PayrollNo, LineNo', $params);
+    }
+
 }
