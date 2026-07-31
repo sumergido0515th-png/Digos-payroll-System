@@ -25,6 +25,8 @@ reads nothing, whatever this table says.
         ` | yes | - | - | - | yes | - | - |
 | `, ` | yes | - | - | - | yes | - | - |
 | `backup.run` | yes | - | - | - | - | - | - |
+| `calendar.edit` | yes | yes | - | - | - | - | - |
+| `calendar.view` | yes | yes | yes | yes | - | yes | yes |
 | `contract.edit` | yes | yes | - | - | - | - | - |
 | `contract.view` | yes | yes | yes | yes | - | - | yes |
 | `dashboard.view` | yes | yes | yes | yes | yes | yes | yes |
@@ -78,6 +80,8 @@ appears here by accident rather than by decision.
 
 - (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
 - `backup.run` — apiBackupNow, apiListBackups, apiRestoreBackup
+- `calendar.edit` — apiDeleteHoliday, apiSaveHoliday
+- `calendar.view` — apiListHolidayPayRules, apiListHolidays
 - `contract.edit` — apiAmendContract, apiSaveContract
 - `contract.view` — apiGetContractHistory, apiListContracts
 - `dashboard.view` — apiGetDashboard, apiGetLookups
@@ -86,7 +90,7 @@ appears here by accident rather than by decision.
 - `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
 - `dtr.edit` — apiDeleteDtrDay, apiSaveDtrDays
 - `dtr.import` — apiImportBiometricLogs
-- `dtr.view` — apiGetDtrGrid, apiGetDtrTotals
+- `dtr.view` — apiGetDtrGrid, apiGetDtrTotals, apiResolveDay
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
 - `employee.view` — apiGetEmployee, apiListEmployees

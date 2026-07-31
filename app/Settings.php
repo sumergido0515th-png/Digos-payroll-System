@@ -33,6 +33,10 @@ const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Fu
     // after Employees, because restore DELETEs and re-INSERTs in this order
     // and the junction's two foreign keys have to have somewhere to point.
     'Memorandum', 'MemorandumEmployees', 'BioExemptions', 'TravelOrders', 'WorkShifts',
+    // Phase 4's calendar. Losing these would not lose a payroll, but it would
+    // lose the basis on which one was computed - and the pay rules are the
+    // versioned policy a pre-audit re-checks history against.
+    'Holidays', 'HolidayPayRules',
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.

@@ -99,6 +99,13 @@ const ROUTES = [
     'apiDeleteDtrDay' => ['dtr.edit', 'DtrDays', 'DELETE_DTR_DAY'],
     'apiImportBiometricLogs' => ['dtr.import', 'DtrDays', 'IMPORT_BIOMETRIC'],
 
+    // Calendar and resolvers (Phase 4)
+    'apiListHolidays' => ['calendar.view', 'Holidays', ''],
+    'apiListHolidayPayRules' => ['calendar.view', 'HolidayPayRules', ''],
+    'apiSaveHoliday' => ['calendar.edit', 'Holidays', 'SAVE_HOLIDAY'],
+    'apiDeleteHoliday' => ['calendar.edit', 'Holidays', 'DELETE_HOLIDAY'],
+    'apiResolveDay' => ['dtr.view', 'Resolvers', ''],
+
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],

@@ -91,6 +91,53 @@ final class MemorandumRepo
             array_merge($scope['params'], [$memoId]));
     }
 
+    /**
+     * Every memo that could bear on a date, for the Phase 4 resolver.
+     *
+     * UNSCOPED, and not reachable from a route. AuthorityResolver decides
+     * whether a memo covers an employee, and it can only do that if it is
+     * handed every memo - including the ones a citywide instrument issued by
+     * another office. Applying the caller's grants here would make a memo's
+     * authority depend on who is asking, which is not a property authority has.
+     *
+     * The window filter is deliberately loose: a memo is fetched when its
+     * window touches the date at all, and supersession truncation then decides
+     * whether it still applies. Filtering tightly here would pre-empt a
+     * decision that belongs in the pure function.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function activeForDate(string $date): array
+    {
+        return DB::rows(
+            "SELECT * FROM Memorandum
+              WHERE Status <> 'Draft'
+                AND (EffectivityStart IS NULL OR EffectivityStart <= ?
+                     OR EffectivityType = 'Specific')
+              ORDER BY DateIssued DESC, ControlNo DESC",
+            [$date]);
+    }
+
+    /**
+     * The coverage rows for those memoranda.
+     *
+     * Unscoped for the same reason, and returned whole rather than per employee
+     * so the resolver can be handed one array for a whole period.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function coverageForDate(string $date): array
+    {
+        return DB::rows(
+            "SELECT me.MemoID, me.EmployeeID
+               FROM MemorandumEmployees me
+               JOIN Memorandum m ON m.MemoID = me.MemoID
+              WHERE m.Status <> 'Draft'
+                AND (m.EffectivityStart IS NULL OR m.EffectivityStart <= ?
+                     OR m.EffectivityType = 'Specific')",
+            [$date]);
+    }
+
     /** Whether a control number is already taken by a different memo. */
     public static function controlNoTaken(string $controlNo, string $exceptMemoId = ''): bool
     {

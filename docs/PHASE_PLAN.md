@@ -271,8 +271,35 @@ The schema is already fixed in Phase 1, so this is capture UI plus a derivation 
 
 ## Phase 4 — Resolvers
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-07-31
 **Depends on:** Phase 3B
+
+> Three pure functions in `app/Domain/Resolver/`, the shell in `app/Calendar.php`, and
+> migration `0019` for the two tables they read. Full write-up: [RESOLVERS.md](RESOLVERS.md).
+>
+> **The JO/COS divergence is the finding this phase exists for.** A Job Order or Contract
+> of Service worker is engaged for services actually rendered, so they are not paid for a
+> regular holiday they did not work, where a plantilla employee is. Paying it is a
+> disallowance and it is the easiest mistake to make by hand. It falls out of two
+> independent tie-breaks in `ruleFor()`: a rule naming the employment type beats the NULL
+> fallback **however recent the fallback is**, and among equally specific rules the version
+> in force **on the date being resolved** wins rather than today’s.
+>
+> **A missing pay rule is reported, never assumed.** A resolver that invented “unpaid, 0×”
+> for an incomplete table would produce a wrong payroll indistinguishable from a correct
+> one, and Phase 6 would have nothing to flag.
+>
+> **Overtime is deliberately not clipped to the shift** — it is by definition outside it, so
+> intersecting the two would authorise nothing at all. Every other authority type is
+> shift-bounded. That inversion is easy to “fix” back in, so it carries a comment at the
+> exception and a test named after it.
+>
+> All five exit-gate cases are covered by fixtures, and each of three enforcements was
+> reverted one at a time: specificity failed 4 tests, the overtime exception 1, the shift
+> date filter 3 — each of them the tests that name it.
+>
+> **Owner decision still outstanding:** the seeded multipliers are the national default and
+> need confirming against the city’s own issuances before go-live.
 
 ### Objective
 Build the two hardest logic pieces in the system as pure, tested functions.
