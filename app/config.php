@@ -52,6 +52,17 @@ defined('APP_TIMEZONE') || define('APP_TIMEZONE', 'Asia/Manila');
 define('BACKUP_DIR', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'backups');
 
 /**
+ * Where uploaded payroll attachments are stored.
+ *
+ * Outside the web root, next to backups/, and NOT under public/assets/uploads
+ * where the branding images live. These are scanned memoranda and medical
+ * certificates justifying somebody's pay - a guessable URL would serve them to
+ * anyone who tried one. They are streamed by public/attachment.php, which
+ * checks the caller's scope first.
+ */
+define('ATTACHMENT_DIR', dirname(__DIR__) . DIRECTORY_SEPARATOR . 'attachments');
+
+/**
  * Where uploaded branding images (office logo, page watermark) are stored.
  * Unlike backups this is inside the web root, because the browser and the
  * print view fetch it directly by URL. Only files whose extension this

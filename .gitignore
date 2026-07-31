@@ -20,3 +20,8 @@ composer.phar
 *.swp
 Thumbs.db
 Desktop.ini
+
+# Uploaded payroll attachments. The rows are backed up; the bytes are the
+# installation's own data and never belong in the repository.
+attachments/*
+!attachments/.gitkeep

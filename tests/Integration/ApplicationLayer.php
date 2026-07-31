@@ -49,6 +49,7 @@ final class ApplicationLayer
             'app/Domain/Resolver/HolidayResolver.php',
             'app/Domain/Resolver/AuthorityResolver.php',
             'app/Domain/Resolver/ShiftResolver.php',
+            'app/Domain/Coverage/CoverageMatrix.php',
             'app/Repo/ScopeGrantRepo.php',
             'app/Repo/ScopeGateway.php',
             'app/Repo/EmployeeRepo.php',
@@ -62,6 +63,7 @@ final class ApplicationLayer
             'app/Repo/ContractRepo.php',
             'app/Repo/DtrRepo.php',
             'app/Repo/HolidayRepo.php',
+            'app/Repo/AttachmentRepo.php',
             'app/Settings.php',
             'app/Auth.php',
             'app/Access.php',
@@ -70,6 +72,7 @@ final class ApplicationLayer
             'app/Documents.php',
             'app/Dtr.php',
             'app/Calendar.php',
+            'app/Attachments.php',
             // PrintDoc last, as app/bootstrap.php loads it. It was missing here
             // and PrintScopeTest still passed in a full run, because
             // tests/Unit/EmployeesFunctionTest.php requires the file and the

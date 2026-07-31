@@ -327,8 +327,34 @@ Hardest logic in the system. Worth the token spend to get right once, with tests
 
 ## Phase 5 — Attachments & Coverage Matrix
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-07-31
 **Depends on:** Phase 3, Phase 4
+
+> Migration `0020`, `CoverageMatrix` (pure), `AttachmentRepo`, `app/Attachments.php`,
+> `public/attachment.php` and a two-tab page.
+>
+> **Coverage is one row per employee per date, not a range on the file.** A range cannot
+> answer “was THIS person’s manual entry on THIS date covered?” without re-deriving who was
+> named — and capturing it at upload rather than at print time is precisely so the answer
+> stops being derived at all.
+>
+> **`Sha256` carries a UNIQUE key.** The application checks first so the refusal names what
+> is being duplicated, but the constraint is the guarantee: a PHP-only check is one two
+> concurrent requests can both pass, and there is a test that inserts a colliding row
+> directly to prove the database refuses it.
+>
+> **Only one cell state is loud.** A day is red when the employee was recorded as working,
+> the record was hand-keyed, and nothing on file explains it. A biometric day, a rest day,
+> an unworked holiday and a day with no record are all quiet — colouring those red would
+> bury the real findings, which is the failure this screen exists to avoid.
+>
+> Files live in `attachments/`, outside the web root, streamed by a route that applies the
+> scope predicate. Verified live: signed-in 200, no session 403, unknown id 403 — and the
+> type is decided by the file’s own leading bytes, so a PHP script named `.pdf` is refused.
+>
+> **Backups carry the rows, not the bytes.** `Attachments` and `AttachmentCoverage` are in
+> `BACKUP_TABLES`; the files are not in a SQL dump and must be copied separately. A registry
+> pointing at files nobody copied is worse than none — it looks like the evidence survived.
 
 ### Objective
 Bind attachments to the specific dates they justify, and make gaps visually obvious.

@@ -106,6 +106,13 @@ const ROUTES = [
     'apiDeleteHoliday' => ['calendar.edit', 'Holidays', 'DELETE_HOLIDAY'],
     'apiResolveDay' => ['dtr.view', 'Resolvers', ''],
 
+    // Attachments and the coverage matrix (Phase 5)
+    'apiListAttachments' => ['attachment.view', 'Attachments', ''],
+    'apiGetAttachment' => ['attachment.view', 'Attachments', ''],
+    'apiUploadAttachment' => ['attachment.edit', 'Attachments', 'UPLOAD_ATTACHMENT'],
+    'apiDeleteAttachment' => ['attachment.edit', 'Attachments', 'DELETE_ATTACHMENT'],
+    'apiGetCoverageMatrix' => ['attachment.view', 'Coverage', ''],
+
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],

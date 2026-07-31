@@ -24,6 +24,8 @@ reads nothing, whatever this table says.
 | `,
         ` | yes | - | - | - | yes | - | - |
 | `, ` | yes | - | - | - | yes | - | - |
+| `attachment.edit` | yes | yes | yes | - | - | - | - |
+| `attachment.view` | yes | yes | yes | yes | - | yes | yes |
 | `backup.run` | yes | - | - | - | - | - | - |
 | `calendar.edit` | yes | yes | - | - | - | - | - |
 | `calendar.view` | yes | yes | yes | yes | - | yes | yes |
@@ -79,6 +81,8 @@ appears here by accident rather than by decision.
 ## Endpoints by permission
 
 - (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
+- `attachment.edit` — apiDeleteAttachment, apiUploadAttachment
+- `attachment.view` — apiGetAttachment, apiGetCoverageMatrix, apiListAttachments
 - `backup.run` — apiBackupNow, apiListBackups, apiRestoreBackup
 - `calendar.edit` — apiDeleteHoliday, apiSaveHoliday
 - `calendar.view` — apiListHolidayPayRules, apiListHolidays

@@ -37,6 +37,11 @@ const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Fu
     // lose the basis on which one was computed - and the pay rules are the
     // versioned policy a pre-audit re-checks history against.
     'Holidays', 'HolidayPayRules',
+    // Phase 5. The rows only - the FILES live in attachments/ and are not in a
+    // SQL dump, so a restore rebuilds the index and the bytes have to be backed
+    // up separately. Recorded here because a registry pointing at files nobody
+    // copied is worse than no registry: it looks like the evidence survived.
+    'Attachments', 'AttachmentCoverage',
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.

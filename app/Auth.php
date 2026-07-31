@@ -46,6 +46,7 @@ const PERMISSIONS = [
         'shift.view', 'shift.edit',
         'dtr.view', 'dtr.edit', 'dtr.import',
         'calendar.view', 'calendar.edit',
+        'attachment.view', 'attachment.edit',
         'report.view', 'print.run',
     ],
 
@@ -61,7 +62,7 @@ const PERMISSIONS = [
         // Reads the documents a line is justified by; does not issue them.
         'document.view', 'contract.view', 'shift.view',
         'dtr.view', 'dtr.edit', 'dtr.import',
-        'calendar.view',
+        'calendar.view', 'attachment.view', 'attachment.edit',
         'report.view', 'print.run',
     ],
 
@@ -77,7 +78,7 @@ const PERMISSIONS = [
         // checking a manual DTR entry against a covering bio exemption.
         'document.view', 'contract.view', 'shift.view',
         // The pre-audit reads the day rows a payroll line was derived from.
-        'dtr.view', 'calendar.view',
+        'dtr.view', 'calendar.view', 'attachment.view',
         'report.view', 'print.run',
     ],
 
@@ -91,7 +92,7 @@ const PERMISSIONS = [
         // and this role deliberately has no route to the restricted tier.
         // Keying the DTR grid is the encoder's day job.
         'document.view', 'shift.view',
-        'dtr.view', 'dtr.edit', 'calendar.view',
+        'dtr.view', 'dtr.edit', 'calendar.view', 'attachment.view', 'attachment.edit',
         'print.run',
     ],
 
@@ -101,7 +102,7 @@ const PERMISSIONS = [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view',
-        'document.view', 'shift.view', 'dtr.view', 'calendar.view',
+        'document.view', 'shift.view', 'dtr.view', 'calendar.view', 'attachment.view',
         'report.view', 'print.run',
     ],
 
@@ -113,7 +114,7 @@ const PERMISSIONS = [
         // against, contracts included - the whole point of the role is to be
         // able to check the same things a pre-auditor checked.
         'document.view', 'contract.view', 'shift.view', 'dtr.view',
-        'calendar.view',
+        'calendar.view', 'attachment.view',
     ],
 ];
 

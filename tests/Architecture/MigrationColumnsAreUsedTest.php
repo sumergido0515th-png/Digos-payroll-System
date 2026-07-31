@@ -72,6 +72,7 @@ final class MigrationColumnsAreUsedTest extends TestCase
         'DtrDays.UpdatedAt' => 'maintained by the database, never written by PHP',
         'Holidays.UpdatedAt' => 'maintained by the database, never written by PHP',
         'HolidayPayRules.UpdatedAt' => 'maintained by the database, never written by PHP',
+        'Attachments.UpdatedAt' => 'maintained by the database, never written by PHP',
     ];
 
     /** Tables whose columns are structural rather than application data. */
