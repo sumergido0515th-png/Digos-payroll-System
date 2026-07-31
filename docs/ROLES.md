@@ -105,7 +105,7 @@ appears here by accident rather than by decision.
 - `payroll.edit` — apiCancelPayroll, apiDeletePayroll, apiSavePayroll, apiUndoLast
 - `payroll.release` — apiEmailPayslips, apiReleasePayroll
 - `payroll.submit` — apiSubmitPayroll
-- `payroll.view` — apiComputePayroll, apiGetPayroll, apiListPayrolls
+- `payroll.view` — apiComputePayroll, apiGetPayroll, apiListPayrolls, apiRunPreAudit
 - `period.edit` — apiDeletePeriod, apiSavePeriod
 - `period.view` — apiListPeriods
 - `print.run` — apiGetPrintHtml

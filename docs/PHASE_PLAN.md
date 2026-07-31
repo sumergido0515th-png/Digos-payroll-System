@@ -379,8 +379,32 @@ UI here is simple (a grid). The hard logic is already done in Phase 4 — this p
 
 ## Phase 6 — Pre-Audit Rule Engine
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-07-31
 **Depends on:** Phase 4, Phase 5
+
+> Twenty-two rules in one pure function. Catalogue: [RULES.md](RULES.md).
+>
+> **The engine reports; it does not decide what happens next.** Phase 7’s transition guard and
+> Phase 8’s print gate read the severities and act. That split lets a preparer run the
+> pre-audit speculatively against their own work with no consequences, and lets a rule be
+> re-tiered without touching workflow code.
+>
+> **Missing data is not a clean bill.** A check that could not run reports INFO rather than
+> passing silently — from outside, a rule with no input and a rule that found nothing look
+> identical, and only one is reassuring.
+>
+> **CON-003 is the redacted cross-scope check Phase 2 specified.** It runs system-wide,
+> because an employee paid twice by two offices is exactly the case a scoped query would
+> answer “no clash” to. The finding names only the employee, already visible to the reader;
+> the other payroll’s number and office are dropped before the engine sees them.
+>
+> The fixture caught a real bug on its first run: CMP-001 looked the contract up at the
+> period END, so a contract that expired mid-period was never found — it reported “no
+> contract” instead. Now looked up at the period start.
+>
+> **Still gated on owner data.** The CAFOA/Function-PPA rules have nothing to check while all
+> four offices carry a NULL function code. The fixtures supply their own data, so the engine
+> is proven; against the live database those rules pass vacuously until the codes are set.
 
 ### Objective
 Single pure function producing severity-tiered findings, consumed by the pre-audit workflow.

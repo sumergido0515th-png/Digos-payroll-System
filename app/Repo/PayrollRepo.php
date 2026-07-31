@@ -86,6 +86,48 @@ final class PayrollRepo
     }
 
     /**
+     * Employees appearing on another non-cancelled payroll over these dates.
+     *
+     * DELIBERATELY UNSCOPED, and the only method here that is. An employee paid
+     * twice by two different offices is precisely the case this exists to
+     * catch, and a scoped query would answer "no clash" to the one reader who
+     * most needs to know - because the other payroll is the one they cannot
+     * see.
+     *
+     * The disclosure that would follow is prevented by the CALLER, in
+     * redactedOverlaps(): it keeps the employee, whom the reader can already
+     * see on the payroll in front of them, and drops the other payroll's
+     * number and office. Splitting it this way keeps the elevated query in one
+     * named place instead of leaving a scoped-looking method that quietly is
+     * not.
+     *
+     * @param string[] $employeeIds
+     * @return array<int, array<string, mixed>>
+     */
+    public static function employeesOnOverlappingPayrolls(
+        string $exceptPayrollNo,
+        array $employeeIds,
+        string $start,
+        string $end
+    ): array {
+        if (!$employeeIds) return [];
+
+        $placeholders = implode(',', array_fill(0, count($employeeIds), '?'));
+
+        return DB::rows(
+            "SELECT DISTINCT pd.EmployeeID, pd.EmployeeName
+               FROM PayrollDetails pd
+               JOIN Payroll h ON h.PayrollNo = pd.PayrollNo
+               JOIN PayrollPeriods p ON p.PeriodID = h.PeriodID
+              WHERE pd.PayrollNo <> ?
+                AND h.Status <> 'Cancelled'
+                AND pd.EmployeeID IN ($placeholders)
+                AND p.StartDate <= ? AND p.EndDate >= ?
+              ORDER BY pd.EmployeeName",
+            array_merge([$exceptPayrollNo], array_values($employeeIds), [$end, $start]));
+    }
+
+    /**
      * Gross and net per period-month, newest first, within scope.
      *
      * The dashboard's chart. Aggregated in SQL rather than in PHP because the

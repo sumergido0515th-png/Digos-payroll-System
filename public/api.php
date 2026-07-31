@@ -113,6 +113,9 @@ const ROUTES = [
     'apiDeleteAttachment' => ['attachment.edit', 'Attachments', 'DELETE_ATTACHMENT'],
     'apiGetCoverageMatrix' => ['attachment.view', 'Coverage', ''],
 
+    // Pre-audit (Phase 6)
+    'apiRunPreAudit' => ['payroll.view', 'PreAudit', ''],
+
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],
