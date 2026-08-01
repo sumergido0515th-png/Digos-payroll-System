@@ -45,6 +45,7 @@ if (empty($_SESSION['email'])) {
       <a class="nav-item-link" data-page="employees" data-perm="employee.view"><span class="material-icons">badge</span>Employees</a>
       <a class="nav-item-link" data-page="payroll" data-perm="payroll.view"><span class="material-icons">request_quote</span>Payroll Transactions</a>
       <a class="nav-item-link" data-page="dtr" data-perm="dtr.view"><span class="material-icons">event_note</span>Daily Time Records</a>
+      <a class="nav-item-link" data-page="preaudit" data-perm="payroll.approve"><span class="material-icons">fact_check</span>Pre-Audit Worklist</a>
       <a class="nav-item-link" data-page="documents" data-perm="document.view"><span class="material-icons">description</span>Authority Documents</a>
       <a class="nav-item-link" data-page="coverage" data-perm="attachment.view"><span class="material-icons">fact_check</span>Coverage &amp; Attachments</a>
       <a class="nav-item-link" data-page="timekeepers" data-perm="timekeeper.view"><span class="material-icons">schedule</span>Timekeepers</a>
@@ -90,6 +91,7 @@ if (empty($_SESSION['email'])) {
         include dirname(__DIR__) . '/views/dashboard.php';
         include dirname(__DIR__) . '/views/employees.php';
         include dirname(__DIR__) . '/views/payroll.php';
+        include dirname(__DIR__) . '/views/preaudit.php';
         include dirname(__DIR__) . '/views/documents.php';
         include dirname(__DIR__) . '/views/dtr.php';
         include dirname(__DIR__) . '/views/coverage.php';

@@ -63,7 +63,7 @@ final class ScopeGatewayTest extends TestCase
         foreach ([[self::CMO_PAYROLL, self::CMO], [self::OCEEM_PAYROLL, self::OCEEM]] as [$no, $office]) {
             $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                           VALUES (?, ?, ?, ?, ?)')
-                ->execute([$no, self::PERIOD, $office, 'Draft', 100.00]);
+                ->execute([$no, self::PERIOD, $office, 'DRAFT', 100.00]);
         }
 
         foreach ([self::SCOPED_USER, self::WIDE_USER] as $email) {

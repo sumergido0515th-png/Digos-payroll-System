@@ -90,7 +90,7 @@ final class CrossScopeDisclosureTest extends TestCase
         // clash duplicateEmployees() is meant to find.
         $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                       VALUES (?, ?, ?, ?, ?)')
-            ->execute([self::THEIR_PAYROLL, self::PERIOD, self::THEIRS, 'Approved', 999.00]);
+            ->execute([self::THEIR_PAYROLL, self::PERIOD, self::THEIRS, 'PRE_AUDIT_APPROVED', 999.00]);
         $db->prepare('INSERT INTO PayrollDetails (DetailID, PayrollNo, LineNo, EmployeeID,
                                                   ChargedOfficeCode, EmployeeName, SalaryRate,
                                                   DaysWorked, GrossPay, NetPay)
@@ -217,7 +217,7 @@ final class CrossScopeDisclosureTest extends TestCase
         $db = TestDatabase::connect();
         $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                       VALUES (?, ?, ?, ?, ?)')
-            ->execute(['ZZD-MINE-1', self::PERIOD, self::MINE, 'Draft', 500.00]);
+            ->execute(['ZZD-MINE-1', self::PERIOD, self::MINE, 'DRAFT', 500.00]);
         $db->prepare('INSERT INTO PayrollDetails (DetailID, PayrollNo, LineNo, EmployeeID,
                                                   ChargedOfficeCode, EmployeeName, SalaryRate,
                                                   DaysWorked, GrossPay, NetPay)

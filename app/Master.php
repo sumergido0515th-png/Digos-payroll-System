@@ -432,7 +432,7 @@ function apiGetLookups(array $p, array $user): array
         'periods' => DB::rows('SELECT * FROM PayrollPeriods ORDER BY StartDate DESC'),
         'employmentTypes' => ['Job Order', 'Contract of Service'],
         'statuses' => ['Active', 'Inactive'],
-        'payrollStatuses' => ['Draft', 'Pending', 'Approved', 'Released', 'Cancelled'],
+        'payrollStatuses' => \Digos\Domain\Workflow\PayrollWorkflow::ALL,
         'roles' => array_keys(PERMISSIONS),
     ];
 }

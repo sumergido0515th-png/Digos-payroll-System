@@ -9,6 +9,7 @@
 
 declare(strict_types=1);
 
+use Digos\Domain\Workflow\PayrollWorkflow;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\PayrollRepo;
 use Digos\Repo\ReferenceRepo;
@@ -29,8 +30,12 @@ function apiGetDashboard(array $p, array $user): array
     $counts = EmployeeRepo::countsScoped($user);
 
     $payrolls = array_map('aliasFunctionOut', PayrollRepo::listScoped($user, []));
-    $pending = array_filter($payrolls, fn($x) => in_array($x['Status'], ['Draft', 'Pending'], true));
-    $processed = array_filter($payrolls, fn($x) => in_array($x['Status'], ['Approved', 'Released'], true));
+    // Processed = passed pre-audit sign-off (Phase 7's OFFICIAL states); pending
+    // is everything short of that and not yet cancelled - Draft, awaiting
+    // pre-audit, suspended or returned all still need something done to them.
+    $pending = array_filter($payrolls, fn($x) => !PayrollWorkflow::isOfficial($x['Status'])
+        && $x['Status'] !== 'CANCELLED');
+    $processed = array_filter($payrolls, fn($x) => PayrollWorkflow::isOfficial($x['Status']));
 
     // Monthly net/gross series for the last 12 period-months.
     $monthlyRows = PayrollRepo::monthlyTotalsScoped($user);
@@ -42,7 +47,7 @@ function apiGetDashboard(array $p, array $user): array
     ], $monthlyRows));
 
     $statusSplit = [];
-    foreach (['Draft', 'Pending', 'Approved', 'Released', 'Cancelled'] as $s) {
+    foreach (PayrollWorkflow::ALL as $s) {
         $statusSplit[] = ['label' => $s,
             'value' => count(array_filter($payrolls, fn($x) => $x['Status'] === $s))];
     }

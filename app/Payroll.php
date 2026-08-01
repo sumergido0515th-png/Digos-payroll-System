@@ -2,26 +2,27 @@
 /**
  * ============================================================================
  * Payroll.php - Periods, payroll transactions (max 15 employees), automatic
- * computation, workflow (Draft -> Pending -> Approved -> Released/Cancelled),
- * duplicate detection, sequential numbering and single-step undo.
- * Mirrors src/Payroll.gs.
+ * computation, the Phase 7 workflow state machine, duplicate detection,
+ * sequential numbering and single-step undo.
+ *
+ *   DRAFT -> FOR_PRE_AUDIT -> PRE_AUDIT_APPROVED -> FOR_PRINTING -> PRINTED -> SUBMITTED
+ *                   |- SUSPENDED -> (settle) -> FOR_PRE_AUDIT
+ *                   `- RETURNED_TO_PREPARER -> FOR_PRE_AUDIT
+ *
+ * The graph itself, the approval guard and the suspension split live in the
+ * pure Digos\Domain\Workflow\PayrollWorkflow; this file loads what that class
+ * needs and persists what it decides. Mirrors src/Payroll.gs.
  * ============================================================================
  */
 
 declare(strict_types=1);
 
+use Digos\Domain\Rules\RuleEngine;
+use Digos\Domain\Workflow\PayrollWorkflow;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\PayrollRepo;
 use Digos\Repo\ScopeGateway;
-
-/** Legal workflow transitions, keyed by current status. */
-const PAYROLL_FLOW = [
-    'Draft' => ['Pending', 'Cancelled'],
-    'Pending' => ['Approved', 'Draft', 'Cancelled'],
-    'Approved' => ['Released', 'Cancelled'],
-    'Released' => [],
-    'Cancelled' => [],
-];
+use Digos\Repo\SuspensionRepo;
 
 /* ==========================================================================
  * Payroll periods
@@ -80,18 +81,27 @@ function apiDeletePeriod(array $p, array $user): array
 
 /**
  * Next sequential payroll number, e.g. "PR-2026-000001".
+ *
  * The Counters row is locked (FOR UPDATE) so concurrent saves cannot collide.
- * Must be called inside a transaction.
+ * Must be called inside a transaction. Filtered to the PAYROLL series - since
+ * migration 0021 gave Counters a Series column so suspension numbers (NsNo)
+ * could have their own independent sequence, a bare `WHERE YearNo = ?` would
+ * match two rows once a suspension has been raised in the same year, and
+ * which one a plain fetchColumn() returns is not something to depend on.
  */
 function nextPayrollNo(): string
 {
     $prefix = getSetting('PayrollPrefix', 'PR');
     $year = (int) date('Y');
 
-    DB::exec('INSERT IGNORE INTO Counters (YearNo, LastNo) VALUES (?, 0)', [$year]);
-    $last = (int) DB::scalar('SELECT LastNo FROM Counters WHERE YearNo = ? FOR UPDATE', [$year]);
+    DB::exec('INSERT IGNORE INTO Counters (YearNo, Series, LastNo) VALUES (?, ?, 0)',
+        [$year, 'PAYROLL']);
+    $last = (int) DB::scalar(
+        'SELECT LastNo FROM Counters WHERE YearNo = ? AND Series = ? FOR UPDATE',
+        [$year, 'PAYROLL']);
     $next = $last + 1;
-    DB::exec('UPDATE Counters SET LastNo = ? WHERE YearNo = ?', [$next, $year]);
+    DB::exec('UPDATE Counters SET LastNo = ? WHERE YearNo = ? AND Series = ?',
+        [$next, $year, 'PAYROLL']);
 
     return sprintf('%s-%d-%06d', $prefix, $year, $next);
 }
@@ -264,9 +274,9 @@ function apiSavePayroll(array $p, array $user): array
     $existing = $isNew ? null : DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
     if (!$isNew) {
         if (!$existing) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
-        if (!in_array($existing['Status'], ['Draft', 'Pending'], true)) {
-            throw new RuntimeException('Only Draft or Pending payrolls can be edited. This one is '
-                . $existing['Status'] . '.');
+        if (!PayrollWorkflow::isEditable($existing['Status'])) {
+            throw new RuntimeException('Only a Draft, submitted-for-pre-audit or returned payroll '
+                . 'can be edited. This one is ' . $existing['Status'] . '.');
         }
     }
 
@@ -310,7 +320,7 @@ function apiSavePayroll(array $p, array $user): array
             'PreparedBy' => $user['FullName'] ?: $user['Email'],
             'PreparedByUser' => $user['Email'],
             'Remarks' => $p['Remarks'] ?? '',
-            'Status' => $existing ? $existing['Status'] : 'Draft',
+            'Status' => $existing ? $existing['Status'] : 'DRAFT',
             'TotalGross' => $sums['gross'],
             'TotalDeductions' => $sums['deductions'],
             'TotalNet' => $sums['net'],
@@ -357,7 +367,7 @@ function duplicateEmployees(string $periodId, string $exceptPayrollNo, array $em
         "SELECT d.EmployeeName, d.PayrollNo, d.ChargedOfficeCode
            FROM PayrollDetails d
            JOIN Payroll h ON h.PayrollNo = d.PayrollNo
-          WHERE h.PeriodID = ? AND h.Status <> 'Cancelled' AND h.PayrollNo <> ?
+          WHERE h.PeriodID = ? AND h.Status <> 'CANCELLED' AND h.PayrollNo <> ?
             AND d.EmployeeID IN ($ph)",
         array_merge([$periodId, $exceptPayrollNo], array_values($employeeIds)));
 
@@ -391,7 +401,7 @@ function apiDeletePayroll(array $p, array $user): array
     requireFields($p, ['PayrollNo']);
     $header = DB::row('SELECT Status FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
-    if ($header['Status'] !== 'Draft') {
+    if ($header['Status'] !== 'DRAFT') {
         throw new RuntimeException('Only Draft payrolls can be deleted. Cancel it instead.');
     }
     return DB::tx(function () use ($p) {
@@ -430,28 +440,50 @@ function requireDifferentApprover(array $header, array $user): void
         . 'Someone else with approval authority has to review it.');
 }
 
-/** Validated status transition + timestamps. */
+/**
+ * Re-verifies the caller's own password at the moment of a sensitive action.
+ *
+ * requireUser() already proved who is signed in for this whole request;
+ * this proves they can still produce the one secret an unattended or
+ * hijacked session cannot. Approval is the one step in this workflow with no
+ * real undo - Undo reverts a status flag, not a suspension already raised
+ * against somebody's pay, or a supplemental payroll already split off - so it
+ * is the one action that asks again, at the moment it happens.
+ */
+function reauthenticate(array $user, string $password): void
+{
+    $hash = (string) DB::scalar('SELECT PasswordHash FROM Users WHERE Email = ?', [$user['Email']]);
+    if ($hash === '' || !password_verify($password, $hash)) {
+        throw new RuntimeException('Incorrect password. Re-enter it to confirm this approval.');
+    }
+}
+
+/** Validated status transition + timestamps. Segregation of duties is the caller's job. */
 function payrollTransition(string $payrollNo, string $to, array $user): array
 {
     $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$payrollNo]);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $payrollNo);
 
-    $allowed = PAYROLL_FLOW[$header['Status']] ?? [];
-    if (!in_array($to, $allowed, true)) {
+    if (!PayrollWorkflow::canTransition($header['Status'], $to)) {
         throw new RuntimeException('Cannot move a ' . $header['Status'] . " payroll to $to.");
     }
 
     $patch = ['Status' => $to];
-    if ($to === 'Approved') {
-        requireDifferentApprover($header, $user);
 
-        // As with PreparedBy on save: the display name for the printed form,
-        // the key for the Phase 2 check that the approver is not the preparer.
+    // Stamped on entry to FOR_PRE_AUDIT rather than on creation: a Draft can
+    // sit unedited for weeks before anyone submits it, and the pre-auditor
+    // worklist sorts its queue by how long a payroll has actually been
+    // waiting for review, not by how long it has existed.
+    if ($to === 'FOR_PRE_AUDIT') $patch['SubmittedAt'] = date('Y-m-d H:i:s');
+
+    if ($to === 'PRE_AUDIT_APPROVED') {
+        // As with PreparedBy on save: the display name is for the printed
+        // form, the key is what the Phase 2 segregation-of-duties check reads.
         $patch['ApprovedBy'] = $user['FullName'] ?: $user['Email'];
         $patch['ApprovedByUser'] = $user['Email'];
         $patch['ApprovedAt'] = date('Y-m-d H:i:s');
     }
-    if ($to === 'Released') $patch['ReleasedAt'] = date('Y-m-d H:i:s');
+    if ($to === 'SUBMITTED') $patch['ReleasedAt'] = date('Y-m-d H:i:s');
 
     DB::update('Payroll', $patch, 'PayrollNo', $payrollNo);
     setUndo(['action' => 'status', 'PayrollNo' => $payrollNo,
@@ -459,34 +491,278 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
     return ['PayrollNo' => $payrollNo, 'Status' => $to];
 }
 
+/** DRAFT or RETURNED_TO_PREPARER -> FOR_PRE_AUDIT. */
 function apiSubmitPayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    return payrollTransition($p['PayrollNo'], 'Pending', $user);
+    return payrollTransition($p['PayrollNo'], 'FOR_PRE_AUDIT', $user);
 }
 
+/**
+ * Attempts pre-audit approval.
+ *
+ * Runs the same rule engine a preparer can run speculatively against their
+ * own work (apiRunPreAudit), and applies Phase 6's promise that a BLOCKER
+ * finding has no override: if one is present this does not throw, because
+ * the workflow has somewhere to put a refused approval - it raises a Notice
+ * of Suspension for each BLOCKER and moves the payroll (or the affected
+ * employees' share of it) to SUSPENDED instead.
+ *
+ * Segregation of duties is checked before anything else: refusing a
+ * preparer's attempt to approve their own payroll must not depend on what the
+ * rule engine finds, and must not cost a password re-check to reach. Re-
+ * authentication then gates the one path that would otherwise really approve
+ * something - it is not asked of an attempt that was always going to be
+ * refused for being the same person.
+ */
 function apiApprovePayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    return payrollTransition($p['PayrollNo'], 'Approved', $user);
+
+    $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
+
+    if (!PayrollWorkflow::canTransition($header['Status'], 'PRE_AUDIT_APPROVED')) {
+        throw new RuntimeException('Cannot move a ' . $header['Status'] . ' payroll to PRE_AUDIT_APPROVED.');
+    }
+
+    requireDifferentApprover($header, $user);
+    reauthenticate($user, (string) ($p['Password'] ?? ''));
+
+    $context = preAuditContext($header, $user, (string) ($p['ShiftCode'] ?? ''));
+    $findings = RuleEngine::validateToArray($context);
+    $guard = PayrollWorkflow::guardApproval($findings);
+
+    if ($guard['approved']) {
+        $result = payrollTransition($p['PayrollNo'], 'PRE_AUDIT_APPROVED', $user);
+        return $result + ['approved' => true, 'split' => false, 'suspensions' => 0];
+    }
+
+    return raiseSuspensionsAndSplit($header, $context['lines'], $guard['toRaise'], $user);
 }
 
+/**
+ * Turns a refused approval into one or more Notices of Suspension.
+ *
+ * EMPLOYEE-SCOPED BY DEFAULT. When some lines are clean and some carry a
+ * BLOCKER naming a specific employee, the clean lines are split onto the
+ * ORIGINAL payroll number and proceed straight to PRE_AUDIT_APPROVED; the
+ * named employees move to a freshly numbered SUPPLEMENTAL payroll that holds
+ * at SUSPENDED until settled. Fourteen coworkers are not made to wait on the
+ * fifteenth's unresolved finding.
+ *
+ * A finding with no employee attached (a header-level total that does not
+ * add up, a scope violation with nothing else to blame) suspends the WHOLE
+ * batch instead - there is no subset of clean lines to split off, because
+ * the finding is not about any one of them. The same is true when every
+ * employee on the payroll is named by some finding: nothing clean survives
+ * the split, so there is nothing to do but hold the batch as one unit.
+ *
+ * @param array<int, array<string, mixed>> $lines PayrollDetails rows already
+ *        loaded for the pre-audit - reused rather than re-queried, since the
+ *        findings were computed against exactly these rows
+ * @param array<int, array<string, string>> $toRaise from PayrollWorkflow::guardApproval()
+ */
+function raiseSuspensionsAndSplit(array $header, array $lines, array $toRaise, array $user): array
+{
+    $payrollNo = (string) $header['PayrollNo'];
+    $blockedEmployeeIds = array_values(array_unique(array_filter(array_column($toRaise, 'EmployeeID'))));
+    $batchWide = array_filter($toRaise, fn(array $r) => $r['EmployeeID'] === '');
+
+    $cleanRemains = !$batchWide && $blockedEmployeeIds
+        && count(array_diff(array_column($lines, 'EmployeeID'), $blockedEmployeeIds)) > 0;
+
+    return DB::tx(function () use ($payrollNo, $lines, $toRaise, $user, $blockedEmployeeIds, $cleanRemains) {
+        $raise = function (string $forPayrollNo) use ($toRaise, $user) {
+            foreach ($toRaise as $entry) {
+                SuspensionRepo::raise(SuspensionRepo::nextNsNo(), [
+                    'PayrollNo' => $forPayrollNo,
+                    'EmployeeID' => $entry['EmployeeID'] !== '' ? $entry['EmployeeID'] : null,
+                    'GroundCode' => $entry['GroundCode'],
+                    'RuleID' => $entry['RuleID'],
+                    'Particulars' => $entry['Particulars'],
+                    'RequiredAction' => 'Resolve the finding, then settle this suspension to '
+                        . 'return the payroll to pre-audit.',
+                    'RaisedBy' => $user['Email'],
+                ]);
+            }
+        };
+
+        if (!$cleanRemains) {
+            $raise($payrollNo);
+            payrollTransition($payrollNo, 'SUSPENDED', $user);
+            return ['PayrollNo' => $payrollNo, 'Status' => 'SUSPENDED',
+                'approved' => false, 'split' => false, 'suspensions' => count($toRaise)];
+        }
+
+        $split = PayrollWorkflow::partitionForSuspension($lines, $blockedEmployeeIds);
+        $cleanTotals = payrollTotals($split['clean']);
+        $suspendedTotals = payrollTotals($split['suspended']);
+        $supplementalNo = nextPayrollNo();
+
+        DB::update('Payroll', [
+            'Status' => 'PRE_AUDIT_APPROVED',
+            'TotalGross' => $cleanTotals['gross'],
+            'TotalDeductions' => $cleanTotals['deductions'],
+            'TotalNet' => $cleanTotals['net'],
+            'ApprovedBy' => $user['FullName'] ?: $user['Email'],
+            'ApprovedByUser' => $user['Email'],
+            'ApprovedAt' => date('Y-m-d H:i:s'),
+        ], 'PayrollNo', $payrollNo);
+        DB::exec('DELETE FROM PayrollDetails WHERE PayrollNo = ?', [$payrollNo]);
+        foreach ($split['clean'] as $line) {
+            $line['DetailID'] = newId('PD');
+            $line['PayrollNo'] = $payrollNo;
+            DB::insert('PayrollDetails', $line);
+        }
+
+        $original = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$payrollNo]);
+        $supplemental = $original;
+        $supplemental['PayrollNo'] = $supplementalNo;
+        $supplemental['Status'] = 'SUSPENDED';
+        $supplemental['SupplementsPayrollNo'] = $payrollNo;
+        $supplemental['TotalGross'] = $suspendedTotals['gross'];
+        $supplemental['TotalDeductions'] = $suspendedTotals['deductions'];
+        $supplemental['TotalNet'] = $suspendedTotals['net'];
+        $supplemental['ApprovedBy'] = '';
+        $supplemental['ApprovedByUser'] = null;
+        $supplemental['ApprovedAt'] = null;
+        $supplemental['ReleasedAt'] = null;
+        $supplemental['PdfFileId'] = '';
+        unset($supplemental['DateCreated']);        // a fresh payroll gets its own timestamp
+
+        DB::insert('Payroll', $supplemental);
+        foreach ($split['suspended'] as $line) {
+            $line['DetailID'] = newId('PD');
+            $line['PayrollNo'] = $supplementalNo;
+            DB::insert('PayrollDetails', $line);
+        }
+
+        $raise($supplementalNo);
+
+        return ['PayrollNo' => $payrollNo, 'Status' => 'PRE_AUDIT_APPROVED',
+            'approved' => true, 'split' => true,
+            'supplementalPayrollNo' => $supplementalNo, 'suspensions' => count($toRaise)];
+    });
+}
+
+/**
+ * A pre-auditor's own judgment call, not tied to any rule finding.
+ *
+ * Unlike a refused approval this always holds the whole payroll: the
+ * pre-auditor raising this by hand already knows exactly what they mean to
+ * hold, and if that is one employee rather than the batch, splitting is a
+ * decision for them to make explicitly by approving what remains afterward -
+ * not one this action should guess at on their behalf.
+ */
+function apiSuspendPayroll(array $p, array $user): array
+{
+    requireFields($p, ['PayrollNo', 'GroundCode', 'Particulars', 'RequiredAction']);
+
+    $header = DB::row('SELECT Status FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
+    if (!PayrollWorkflow::canTransition($header['Status'], 'SUSPENDED')) {
+        throw new RuntimeException('Cannot move a ' . $header['Status'] . ' payroll to SUSPENDED.');
+    }
+
+    $employeeId = trim((string) ($p['EmployeeID'] ?? '')) ?: null;
+    if ($employeeId !== null && !DB::row(
+            'SELECT DetailID FROM PayrollDetails WHERE PayrollNo = ? AND EmployeeID = ?',
+            [$p['PayrollNo'], $employeeId])) {
+        throw new RuntimeException('That employee is not on this payroll.');
+    }
+
+    $nsNo = SuspensionRepo::nextNsNo();
+    SuspensionRepo::raise($nsNo, [
+        'PayrollNo' => $p['PayrollNo'],
+        'EmployeeID' => $employeeId,
+        'GroundCode' => (string) $p['GroundCode'],
+        'RuleID' => null,
+        'Particulars' => (string) $p['Particulars'],
+        'RequiredAction' => (string) $p['RequiredAction'],
+        'Deadline' => nullableDate($p['Deadline'] ?? null, 'Deadline'),
+        'RaisedBy' => $user['Email'],
+    ]);
+    payrollTransition($p['PayrollNo'], 'SUSPENDED', $user);
+
+    return ['NsNo' => $nsNo, 'PayrollNo' => $p['PayrollNo'], 'Status' => 'SUSPENDED'];
+}
+
+/** FOR_PRE_AUDIT -> RETURNED_TO_PREPARER: the reject verb, no formal suspension raised. */
 function apiReturnPayroll(array $p, array $user): array
 {
-    requireFields($p, ['PayrollNo']);
-    return payrollTransition($p['PayrollNo'], 'Draft', $user);
+    requireFields($p, ['PayrollNo', 'Remarks']);
+
+    $header = DB::row('SELECT Remarks FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
+
+    $result = payrollTransition($p['PayrollNo'], 'RETURNED_TO_PREPARER', $user);
+
+    $note = '[Returned by ' . ($user['FullName'] ?: $user['Email']) . ']: ' . trim((string) $p['Remarks']);
+    $combined = trim((string) $header['Remarks']) !== '' ? $header['Remarks'] . "\n" . $note : $note;
+    DB::update('Payroll', ['Remarks' => mb_substr($combined, 0, 255)], 'PayrollNo', $p['PayrollNo']);
+
+    return $result;
 }
 
+/**
+ * Closes a suspension. When nothing else is open on that payroll, it
+ * re-enters FOR_PRE_AUDIT automatically - the point of a suspension is that
+ * settling it is what sends a payroll back for review, not a separate step
+ * someone has to remember to take.
+ */
+function apiSettleSuspension(array $p, array $user): array
+{
+    requireFields($p, ['NsNo', 'SettlementRef']);
+
+    $suspension = SuspensionRepo::find((string) $p['NsNo']);
+    if (!$suspension) throw new RuntimeException('Suspension not found: ' . $p['NsNo']);
+    if ($suspension['Status'] !== 'Open') {
+        throw new RuntimeException('This suspension is already ' . $suspension['Status'] . '.');
+    }
+
+    $status = !empty($p['Waive']) ? 'Waived' : 'Settled';
+    SuspensionRepo::close((string) $p['NsNo'], $status, $user['Email'], (string) $p['SettlementRef']);
+
+    $stillOpen = SuspensionRepo::openFor((string) $suspension['PayrollNo']);
+    if (!$stillOpen) {
+        payrollTransition((string) $suspension['PayrollNo'], 'FOR_PRE_AUDIT', $user);
+    }
+
+    return ['NsNo' => $p['NsNo'], 'Status' => $status, 'payrollReopened' => !$stillOpen];
+}
+
+/** Suspensions the caller may see, for the worklist and a payroll's own history. */
+function apiListSuspensions(array $p, array $user): array
+{
+    return SuspensionRepo::listScoped($user, $p);
+}
+
+/** PRE_AUDIT_APPROVED -> FOR_PRINTING. Phase 8 attaches certification to the next step. */
+function apiQueueForPrinting(array $p, array $user): array
+{
+    requireFields($p, ['PayrollNo']);
+    return payrollTransition($p['PayrollNo'], 'FOR_PRINTING', $user);
+}
+
+/** FOR_PRINTING -> PRINTED. */
+function apiMarkPrinted(array $p, array $user): array
+{
+    requireFields($p, ['PayrollNo']);
+    return payrollTransition($p['PayrollNo'], 'PRINTED', $user);
+}
+
+/** PRINTED -> SUBMITTED: handed to the paying office. The point of no return. */
 function apiReleasePayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    return payrollTransition($p['PayrollNo'], 'Released', $user);
+    return payrollTransition($p['PayrollNo'], 'SUBMITTED', $user);
 }
 
 function apiCancelPayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
-    return payrollTransition($p['PayrollNo'], 'Cancelled', $user);
+    return payrollTransition($p['PayrollNo'], 'CANCELLED', $user);
 }
 
 /* ==========================================================================
@@ -514,7 +790,7 @@ function apiUndoLast(array $p, array $user): array
     if (($rec['action'] ?? '') === 'create') {
         $header = DB::row('SELECT Status FROM Payroll WHERE PayrollNo = ?', [$rec['PayrollNo']]);
         if (!$header) throw new RuntimeException('Payroll ' . $rec['PayrollNo'] . ' no longer exists.');
-        if ($header['Status'] !== 'Draft') {
+        if ($header['Status'] !== 'DRAFT') {
             throw new RuntimeException('Payroll has advanced past Draft; undo is no longer possible.');
         }
         DB::tx(function () use ($rec) {
@@ -544,14 +820,14 @@ function apiUndoLast(array $p, array $user): array
  * Payslip email
  * ======================================================================== */
 
-/** Emails HTML payslips to employees on an Approved/Released payroll. */
+/** Emails HTML payslips to employees on a payroll that has passed pre-audit sign-off. */
 function apiEmailPayslips(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
     $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
-    if (!in_array($header['Status'], ['Approved', 'Released'], true)) {
-        throw new RuntimeException('Payslips can only be emailed for Approved or Released payrolls.');
+    if (!PayrollWorkflow::isOfficial($header['Status'])) {
+        throw new RuntimeException('Payslips can only be emailed once a payroll has passed pre-audit sign-off.');
     }
 
     $gov = getSetting('GovernmentName', 'CITY GOVERNMENT OF DIGOS');

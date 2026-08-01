@@ -120,7 +120,7 @@ final class PayrollRepo
                JOIN Payroll h ON h.PayrollNo = pd.PayrollNo
                JOIN PayrollPeriods p ON p.PeriodID = h.PeriodID
               WHERE pd.PayrollNo <> ?
-                AND h.Status <> 'Cancelled'
+                AND h.Status <> 'CANCELLED'
                 AND pd.EmployeeID IN ($placeholders)
                 AND p.StartDate <= ? AND p.EndDate >= ?
               ORDER BY pd.EmployeeName",
@@ -146,7 +146,7 @@ final class PayrollRepo
                     SUM(h.TotalGross) AS gross, SUM(h.TotalNet) AS net, COUNT(*) AS count
                FROM Payroll h
                JOIN PayrollPeriods pd ON pd.PeriodID = h.PeriodID
-              WHERE " . $scope['sql'] . " AND h.Status <> 'Cancelled'
+              WHERE " . $scope['sql'] . " AND h.Status <> 'CANCELLED'
               GROUP BY pd.PayrollYear, pd.PayrollMonth
               ORDER BY SortDate DESC
               LIMIT " . max(1, $limit),
@@ -165,7 +165,7 @@ final class PayrollRepo
     {
         $scope = ScopeGateway::where($user, 'Payroll');
 
-        $sql = "SELECT * FROM Payroll WHERE " . $scope['sql'] . " AND Status <> 'Cancelled'";
+        $sql = "SELECT * FROM Payroll WHERE " . $scope['sql'] . " AND Status <> 'CANCELLED'";
         $params = $scope['params'];
 
         foreach (['PeriodID', 'OfficeCode', 'Department'] as $f) {

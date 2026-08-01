@@ -64,11 +64,19 @@ const ROUTES = [
     'apiDeletePayroll' => ['payroll.edit', 'Payroll', 'DELETE_PAYROLL'],
     'apiSubmitPayroll' => ['payroll.submit', 'Payroll', 'SUBMIT_PAYROLL'],
     'apiApprovePayroll' => ['payroll.approve', 'Payroll', 'APPROVE_PAYROLL'],
-    'apiReturnPayroll' => ['payroll.approve', 'Payroll', 'RETURN_PAYROLL'],
+    'apiReturnPayroll' => ['payroll.suspend', 'Payroll', 'RETURN_PAYROLL'],
     'apiReleasePayroll' => ['payroll.release', 'Payroll', 'RELEASE_PAYROLL'],
     'apiCancelPayroll' => ['payroll.edit', 'Payroll', 'CANCEL_PAYROLL'],
     'apiUndoLast' => ['payroll.edit', 'Payroll', 'UNDO'],
     'apiEmailPayslips' => ['payroll.release', 'Payroll', 'EMAIL_PAYSLIPS'],
+
+    // Workflow (Phase 7): suspension, settlement and the print sub-states.
+    'apiSuspendPayroll' => ['payroll.suspend', 'Payroll', 'SUSPEND_PAYROLL'],
+    'apiSettleSuspension' => ['payroll.suspend', 'Suspensions', 'SETTLE_SUSPENSION'],
+    'apiListSuspensions' => ['payroll.view', 'Suspensions', ''],
+    'apiQueueForPrinting' => ['print.run', 'Payroll', 'QUEUE_FOR_PRINTING'],
+    'apiMarkPrinted' => ['print.run', 'Payroll', 'MARK_PRINTED'],
+    'apiGetWorklist' => ['payroll.approve', 'PreAudit', ''],
 
     // Documents (Phase 3)
     'apiListMemoranda' => ['document.view', 'Memorandum', ''],

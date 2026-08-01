@@ -73,6 +73,11 @@ const PERMISSIONS = [
         'employee.view', 'employee.sensitive',
         'office.view',
         'period.view', 'payroll.view', 'payroll.approve', 'payroll.release',
+        // The Phase 7 reviewer verbs: suspend, settle and return-to-preparer.
+        // Grouped under one permission because all three are the same
+        // judgment call - approving is the only one that needs its own,
+        // since it is the one act with no undo that matters.
+        'payroll.suspend',
         // The pre-audit is conducted against these. Checking a daily rate
         // against the contract in force is the job, and from Phase 6 so is
         // checking a manual DTR entry against a covering bio exemption.

@@ -135,18 +135,25 @@ Pages.payroll = (function () {
     }).then(function (rows) {
       document.getElementById('pr-rows').innerHTML = rows.map(function (r) {
         var acts = actionBtn('visibility', 'Pages.payroll.view(\'' + r.PayrollNo + '\')');
-        if (can('payroll.edit') && (r.Status === 'Draft' || r.Status === 'Pending'))
+        if (can('payroll.edit') && ['DRAFT', 'FOR_PRE_AUDIT', 'RETURNED_TO_PREPARER'].indexOf(r.Status) >= 0)
           acts += actionBtn('edit', 'Pages.payroll.open(\'' + r.PayrollNo + '\')');
-        if (can('payroll.submit') && r.Status === 'Draft')
+        if (can('payroll.submit') && (r.Status === 'DRAFT' || r.Status === 'RETURNED_TO_PREPARER'))
           acts += actionBtn('send', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'submit\')');
-        if (can('payroll.approve') && r.Status === 'Pending')
-          acts += actionBtn('check_circle', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'approve\')', 'text-success') +
-            actionBtn('keyboard_return', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'return\')', 'text-warning');
-        if (can('payroll.release') && r.Status === 'Approved')
+        // Approve and Suspend need the findings panel to decide against, so
+        // they live on the pre-auditor Worklist screen rather than here - a
+        // reviewer approving from a bare list, with no findings in view,
+        // is the UI shortcut this split is meant to prevent.
+        if (can('print.run') && r.Status === 'PRE_AUDIT_APPROVED')
+          acts += actionBtn('print', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'queue\')', 'text-primary');
+        if (can('print.run') && r.Status === 'FOR_PRINTING')
+          acts += actionBtn('done_all', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'printed\')', 'text-primary');
+        if (can('payroll.release') && r.Status === 'PRINTED')
           acts += actionBtn('paid', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'release\')', 'text-success');
-        if (can('payroll.edit') && ['Draft', 'Pending', 'Approved'].indexOf(r.Status) >= 0)
+        if (can('payroll.edit')
+            && ['DRAFT', 'FOR_PRE_AUDIT', 'PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED',
+                'RETURNED_TO_PREPARER'].indexOf(r.Status) >= 0)
           acts += actionBtn('cancel', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'cancel\')', 'text-danger');
-        if (can('payroll.edit') && r.Status === 'Draft')
+        if (can('payroll.edit') && r.Status === 'DRAFT')
           acts += actionBtn('delete', 'Pages.payroll.remove(\'' + r.PayrollNo + '\')', 'text-danger');
 
         return '<tr><td class="fw-semibold">' + esc(r.PayrollNo) + '</td>' +
@@ -357,7 +364,7 @@ Pages.payroll = (function () {
   }
 
   /** Statuses whose printed forms are the official document. */
-  var OFFICIAL_STATUSES = ['Approved', 'Released'];
+  var OFFICIAL_STATUSES = ['PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED', 'SUBMITTED'];
 
   /**
    * The four printable forms, for review before submitting or approving.
@@ -394,10 +401,10 @@ Pages.payroll = (function () {
   /* ---------- workflow ---------- */
 
   var MOVES = {
-    submit: ['apiSubmitPayroll', 'submitted for approval'],
-    approve: ['apiApprovePayroll', 'approved'],
-    return: ['apiReturnPayroll', 'returned to Draft'],
-    release: ['apiReleasePayroll', 'released'],
+    submit: ['apiSubmitPayroll', 'submitted for pre-audit'],
+    queue: ['apiQueueForPrinting', 'queued for printing'],
+    printed: ['apiMarkPrinted', 'marked printed'],
+    release: ['apiReleasePayroll', 'submitted to the paying office'],
     cancel: ['apiCancelPayroll', 'cancelled']
   };
 

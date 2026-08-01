@@ -49,6 +49,7 @@ reads nothing, whatever this table says.
 | `payroll.edit` | yes | - | yes | - | yes | - | - |
 | `payroll.release` | yes | - | - | yes | - | - | - |
 | `payroll.submit` | yes | - | yes | - | yes | - | - |
+| `payroll.suspend` | yes | - | - | yes | - | - | - |
 | `payroll.view` | yes | yes | yes | yes | yes | yes | yes |
 | `period.edit` | yes | - | yes | - | - | - | - |
 | `period.view` | yes | yes | yes | yes | yes | yes | yes |
@@ -101,14 +102,15 @@ appears here by accident rather than by decision.
 - `log.view` — apiGetLogs
 - `office.edit` — apiDeleteDepartment, apiDeleteFunction, apiDeleteOffice, apiSaveDepartment, apiSaveFunction, apiSaveOffice
 - `office.view` — apiListDepartments, apiListFunctions, apiListOffices
-- `payroll.approve` — apiApprovePayroll, apiReturnPayroll
+- `payroll.approve` — apiApprovePayroll, apiGetWorklist
 - `payroll.edit` — apiCancelPayroll, apiDeletePayroll, apiSavePayroll, apiUndoLast
 - `payroll.release` — apiEmailPayslips, apiReleasePayroll
 - `payroll.submit` — apiSubmitPayroll
-- `payroll.view` — apiComputePayroll, apiGetPayroll, apiListPayrolls, apiRunPreAudit
+- `payroll.suspend` — apiReturnPayroll, apiSettleSuspension, apiSuspendPayroll
+- `payroll.view` — apiComputePayroll, apiGetPayroll, apiListPayrolls, apiListSuspensions, apiRunPreAudit
 - `period.edit` — apiDeletePeriod, apiSavePeriod
 - `period.view` — apiListPeriods
-- `print.run` — apiGetPrintHtml
+- `print.run` — apiGetPrintHtml, apiMarkPrinted, apiQueueForPrinting
 - `report.view` — apiRunReport
 - `scope.manage` — apiDeleteScopeGrant, apiGetScopeDimensions, apiListScopeGrants, apiSaveScopeGrant
 - `settings.edit` — apiApplyBackupSchedule, apiSaveSettings, apiUploadImageSetting

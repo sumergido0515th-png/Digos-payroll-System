@@ -28,20 +28,25 @@ final class PayrollPrintIsOfficialTest extends TestCase
 {
     public static function setUpBeforeClass(): void
     {
-        // Helpers first: the marking runs its label through esc(). Neither file
-        // opens a connection, so the unit suite stays database-free.
+        // Helpers first: the marking runs its label through esc(). None of the
+        // three open a connection, so the unit suite stays database-free.
         require_once PROJECT_ROOT . '/app/Helpers.php';
+        require_once PROJECT_ROOT . '/app/Domain/Workflow/PayrollWorkflow.php';
         require_once PROJECT_ROOT . '/app/PrintDoc.php';
     }
 
     public static function statuses(): array
     {
         return [
-            'Draft is being prepared and has not been submitted' => ['Draft', false],
-            'Pending is submitted but not yet approved' => ['Pending', false],
-            'Approved is the official document' => ['Approved', true],
-            'Released is approved and paid out' => ['Released', true],
-            'Cancelled must never print as though it stands' => ['Cancelled', false],
+            'Draft is being prepared and has not been submitted' => ['DRAFT', false],
+            'For pre-audit is submitted but not yet reviewed' => ['FOR_PRE_AUDIT', false],
+            'Pre-audit approved is the official document' => ['PRE_AUDIT_APPROVED', true],
+            'For printing is past sign-off, waiting to print' => ['FOR_PRINTING', true],
+            'Printed is official and the form has been rendered' => ['PRINTED', true],
+            'Submitted is approved and handed to the paying office' => ['SUBMITTED', true],
+            'Suspended must never print as though it stands' => ['SUSPENDED', false],
+            'Returned to preparer is not yet resubmitted' => ['RETURNED_TO_PREPARER', false],
+            'Cancelled must never print as though it stands' => ['CANCELLED', false],
         ];
     }
 
@@ -60,32 +65,43 @@ final class PayrollPrintIsOfficialTest extends TestCase
         $this->assertFalse(\payrollPrintIsOfficial('ForPreAudit'));
     }
 
-    /** Case matters: 'approved' is not a status this system ever stores. */
+    /** Case matters: this system never stores a lower-cased status. */
     public function testTheComparisonIsExact(): void
     {
-        $this->assertFalse(\payrollPrintIsOfficial('approved'));
-        $this->assertFalse(\payrollPrintIsOfficial('APPROVED'));
+        $this->assertFalse(\payrollPrintIsOfficial('pre_audit_approved'));
+        $this->assertFalse(\payrollPrintIsOfficial('Pre_Audit_Approved'));
     }
 
     /* -------------------------------------------------------- the marking */
 
     public function testAnOfficialPayrollGetsNoMarking(): void
     {
-        $this->assertSame('', \reviewOverlayHtml('Approved'));
-        $this->assertSame('', \reviewOverlayHtml('Released'));
+        $this->assertSame('', \reviewOverlayHtml('PRE_AUDIT_APPROVED'));
+        $this->assertSame('', \reviewOverlayHtml('FOR_PRINTING'));
+        $this->assertSame('', \reviewOverlayHtml('PRINTED'));
+        $this->assertSame('', \reviewOverlayHtml('SUBMITTED'));
     }
 
     public function testAnUnapprovedPayrollIsMarkedAndNamesItsStatus(): void
     {
-        $html = \reviewOverlayHtml('Pending');
+        $html = \reviewOverlayHtml('FOR_PRE_AUDIT');
 
         $this->assertStringContainsString('NOT OFFICIAL', $html);
-        $this->assertStringContainsString('PENDING', $html);
+        $this->assertStringContainsString('FOR_PRE_AUDIT', $html);
+    }
+
+    /** A suspended payroll is marked, the same as any other unofficial status. */
+    public function testASuspendedPayrollIsMarked(): void
+    {
+        $html = \reviewOverlayHtml('SUSPENDED');
+
+        $this->assertStringContainsString('NOT OFFICIAL', $html);
+        $this->assertStringContainsString('SUSPENDED', $html);
     }
 
     public function testACancelledPayrollSaysSoRatherThanJustNotOfficial(): void
     {
-        $html = \reviewOverlayHtml('Cancelled');
+        $html = \reviewOverlayHtml('CANCELLED');
 
         $this->assertStringContainsString('CANCELLED', $html);
         $this->assertStringContainsString('NOT FOR PAYMENT', $html);
@@ -156,7 +172,7 @@ final class PayrollPrintIsOfficialTest extends TestCase
      */
     public function testTheMarkingIsNotDrivenByTheDecorativeWatermarkSettings(): void
     {
-        $css = \reviewOverlayCss() . \reviewOverlayHtml('Draft');
+        $css = \reviewOverlayCss() . \reviewOverlayHtml('DRAFT');
 
         $this->assertStringNotContainsString('WatermarkUrl', $css);
         $this->assertStringNotContainsString('WatermarkOpacity', $css);

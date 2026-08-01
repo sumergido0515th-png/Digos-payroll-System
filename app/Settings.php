@@ -42,6 +42,10 @@ const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Fu
     // up separately. Recorded here because a registry pointing at files nobody
     // copied is worse than no registry: it looks like the evidence survived.
     'Attachments', 'AttachmentCoverage',
+    // Phase 7's workflow. After Payroll and PayrollDetails: a suspension
+    // names a PayrollNo and sometimes an EmployeeID, both of which have to
+    // already exist when this row lands during a restore.
+    'Suspensions',
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.

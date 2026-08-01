@@ -78,7 +78,7 @@ final class PrintScopeTest extends TestCase
 
             $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                           VALUES (?, ?, ?, ?, ?)')
-                ->execute([$no, self::PERIOD, $office, 'Pending', 5200.00]);
+                ->execute([$no, self::PERIOD, $office, 'FOR_PRE_AUDIT', 5200.00]);
             $db->prepare('INSERT INTO PayrollDetails (DetailID, PayrollNo, LineNo, EmployeeID,
                                                       ChargedOfficeCode, EmployeeName, SalaryRate,
                                                       DaysWorked, GrossPay, NetPay)
@@ -238,7 +238,7 @@ final class PrintScopeTest extends TestCase
      */
     public function testAnUnapprovedPayrollIsMarkedOnEveryForm(): void
     {
-        $this->setStatus('Draft');
+        $this->setStatus('DRAFT');
 
         foreach (['payroll', 'pagibig', 'summary', 'cafoa'] as $form) {
             $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED), $form);
@@ -262,7 +262,7 @@ final class PrintScopeTest extends TestCase
 
     public function testAnApprovedPayrollIsNotMarkedOnAnyForm(): void
     {
-        $this->setStatus('Approved');
+        $this->setStatus('PRE_AUDIT_APPROVED');
 
         foreach (['payroll', 'pagibig', 'summary', 'cafoa'] as $form) {
             $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED), $form);
@@ -273,19 +273,24 @@ final class PrintScopeTest extends TestCase
         }
     }
 
-    /** Pending is submitted but not approved, so it is still marked. */
-    public function testASubmittedPayrollIsStillMarked(): void
+    /**
+     * FOR_PRE_AUDIT is submitted for review but not yet approved, so it is
+     * still marked. Named for the state rather than "Submitted" - that word
+     * now names its own later, official status, and reusing it here would
+     * read as testing the wrong one.
+     */
+    public function testAPayrollAwaitingPreAuditIsStillMarked(): void
     {
-        $this->setStatus('Pending');
+        $this->setStatus('FOR_PRE_AUDIT');
         $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED));
 
         $this->assertStringContainsString('NOT OFFICIAL', $result['html'] ?? '');
-        $this->assertStringContainsString('PENDING', $result['html'] ?? '');
+        $this->assertStringContainsString('FOR_PRE_AUDIT', $result['html'] ?? '');
     }
 
     public function testACancelledPayrollSaysNotForPayment(): void
     {
-        $this->setStatus('Cancelled');
+        $this->setStatus('CANCELLED');
         $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED));
 
         $this->assertStringContainsString('NOT FOR PAYMENT', $result['html'] ?? '');
@@ -299,7 +304,7 @@ final class PrintScopeTest extends TestCase
      */
     public function testTheMarkingIsNotInsideANoprintRule(): void
     {
-        $this->setStatus('Draft');
+        $this->setStatus('DRAFT');
         $html = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED))['html'] ?? '';
 
         $this->assertStringNotContainsString('noprint', $this->markingMarkup($html),

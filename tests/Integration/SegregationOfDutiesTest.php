@@ -26,6 +26,7 @@ final class SegregationOfDutiesTest extends TestCase
     private const PAYROLL = 'ZZSOD-0001';
     private const PREPARER = 'zz-preparer@digos.gov.ph';
     private const APPROVER = 'zz-approver@digos.gov.ph';
+    private const PASSWORD = 'sod-fixture-password';
 
     protected function setUp(): void
     {
@@ -55,10 +56,16 @@ final class SegregationOfDutiesTest extends TestCase
                       VALUES (?, ?, ?, ?, ?, ?)')
             ->execute([self::PERIOD, 'July', 2026, '2026-07-01', '2026-07-15', 'Open']);
 
+        // A real hash rather than the usual 'x' placeholder: Phase 7 adds
+        // re-authentication on approval, and password_verify() against 'x'
+        // would refuse every approve attempt in this file, not just the one
+        // segregation of duties is supposed to refuse.
+        $hash = password_hash(self::PASSWORD, PASSWORD_DEFAULT);
+
         foreach ([self::PREPARER, self::APPROVER] as $email) {
             $db->prepare('INSERT INTO Users (Email, FullName, Role, OfficeCode, Status, PasswordHash)
                           VALUES (?, ?, ?, ?, ?, ?)')
-                ->execute([$email, 'SoD fixture', 'Pre-Auditor', '', 'Active', 'x']);
+                ->execute([$email, 'SoD fixture', 'Pre-Auditor', '', 'Active', $hash]);
             $db->prepare('INSERT INTO ScopeGrants (GrantID, UserEmail, CanRead, CanWrite) VALUES (?, ?, 1, 1)')
                 ->execute(['SG-ZZSOD-' . substr(md5($email), 0, 8), $email]);
         }
@@ -68,7 +75,7 @@ final class SegregationOfDutiesTest extends TestCase
         // check reads the key.
         $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, PreparedBy, PreparedByUser)
                       VALUES (?, ?, ?, ?, ?, ?)')
-            ->execute([self::PAYROLL, self::PERIOD, self::OFFICE, 'Pending', 'SoD fixture', self::PREPARER]);
+            ->execute([self::PAYROLL, self::PERIOD, self::OFFICE, 'FOR_PRE_AUDIT', 'SoD fixture', self::PREPARER]);
     }
 
     private function removeFixture(): void
@@ -102,27 +109,42 @@ final class SegregationOfDutiesTest extends TestCase
     public function testThePreparerCannotApproveTheirOwnPayroll(): void
     {
         try {
+            // No Password in the payload: segregation of duties is checked
+            // before re-authentication, so this must refuse for being the same
+            // person without ever asking for one.
             \apiApprovePayroll(['PayrollNo' => self::PAYROLL], $this->user(self::PREPARER));
             $this->fail('The preparer approved their own payroll.');
         } catch (\Throwable $e) {
             $this->assertStringContainsString('cannot also approve', $e->getMessage());
         }
 
-        $this->assertSame('Pending', $this->statusOf(self::PAYROLL),
+        $this->assertSame('FOR_PRE_AUDIT', $this->statusOf(self::PAYROLL),
             'The payroll was approved despite the refusal.');
     }
 
     public function testADifferentApproverCanApproveIt(): void
     {
-        \apiApprovePayroll(['PayrollNo' => self::PAYROLL], $this->user(self::APPROVER));
+        $result = \apiApprovePayroll(
+            ['PayrollNo' => self::PAYROLL, 'Password' => self::PASSWORD], $this->user(self::APPROVER));
 
-        $this->assertSame('Approved', $this->statusOf(self::PAYROLL));
+        $this->assertTrue($result['approved']);
+        $this->assertSame('PRE_AUDIT_APPROVED', $this->statusOf(self::PAYROLL));
+    }
+
+    /** Re-authentication refuses a wrong password even for the right approver. */
+    public function testTheRightApproverWithTheWrongPasswordIsRefused(): void
+    {
+        $this->expectExceptionMessage('Incorrect password');
+
+        \apiApprovePayroll(
+            ['PayrollNo' => self::PAYROLL, 'Password' => 'not-the-password'], $this->user(self::APPROVER));
     }
 
     /** The key is written on approval, so Phase 7 can tell the two actors apart. */
     public function testApprovalRecordsTheApproverAsAKeyNotJustAName(): void
     {
-        \apiApprovePayroll(['PayrollNo' => self::PAYROLL], $this->user(self::APPROVER));
+        \apiApprovePayroll(
+            ['PayrollNo' => self::PAYROLL, 'Password' => self::PASSWORD], $this->user(self::APPROVER));
 
         $st = TestDatabase::connect()
             ->prepare('SELECT PreparedByUser, ApprovedByUser FROM Payroll WHERE PayrollNo = ?');

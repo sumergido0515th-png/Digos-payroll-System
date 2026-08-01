@@ -434,8 +434,48 @@ Everything downstream depends on this being correct. Bugs here surface as wrong 
 
 ## Phase 7 — Workflow & Roles
 
-**Status:** NOT STARTED
+**Status:** DONE — 2026-08-01
 **Depends on:** Phase 6
+
+> Migration `0021` renames every status — Draft/Pending/Approved/Released/Cancelled become
+> DRAFT/FOR_PRE_AUDIT/PRE_AUDIT_APPROVED/SUBMITTED/CANCELLED, the same way `0016` remapped role
+> names rather than leaving old values for the app to translate forever — and adds
+> `Suspensions`. The graph, the approval guard and the batch split are pure
+> (`Digos\Domain\Workflow\PayrollWorkflow`, 28 fixture tests); `app/Payroll.php` is the shell
+> that loads what they need and persists what they decide.
+>
+> **FOR_PRINTING and PRINTED are placeholders on purpose.** They exist in the graph as plain
+> status flags with no certification behind them yet — Phase 8 attaches payload hashes and
+> print serials to the PRINTED transition. Building that early would have meant guessing at a
+> phase not yet designed.
+>
+> **A refused approval is not an error, it is the workflow doing its job.** `guardApproval()`
+> turns every BLOCKER into a Notice of Suspension automatically — no override, per Phase 6's
+> promise. **Employee-scoped by default:** when a BLOCKER names one employee and others on the
+> batch are clean, the clean lines proceed to `PRE_AUDIT_APPROVED` under the *original* payroll
+> number, and the named employee is split onto a freshly numbered supplemental payroll that
+> holds at `SUSPENDED` — traced back via `SupplementsPayrollNo`. A batch-wide finding, or one
+> that names every employee on the batch, suspends the whole thing instead — there is no clean
+> subset to split off.
+>
+> **Re-authentication gates only the path that would actually approve something.** Segregation
+> of duties is checked first and refuses a preparer approving their own payroll before a
+> password is ever asked for — re-auth is not a hoop the refusal has to jump through first.
+>
+> **Exit gate verified with two real accounts and a real BLOCKER**, not just the pure fixture
+> suite: a Payroll In-Charge account does not hold `payroll.approve` at all — refused at
+> `requirePermission()`, the same gate every route passes through, not a hidden button. A
+> Pre-Auditor distinct from the preparer approves a clean payroll and suspends another. A
+> genuine rate-mismatch BLOCKER on one of two employees splits the batch exactly as designed.
+>
+> New permission: `payroll.suspend`, held by Pre-Auditor, covering suspend/settle/return —
+> grouped under one verb because the plan describes them as the same reviewer judgment call.
+> Approving keeps its own permission, being the one act with no real undo.
+>
+> Deliberately deferred from the plan's task list: the attachment viewer embedded in the
+> worklist links out to the existing attachment stream rather than duplicating it, and SLA
+> colour thresholds are simple client-side bands (24h / 72h) rather than a configurable
+> setting — revisit if the real pre-audit cadence needs something finer.
 
 ### Objective
 Wire the rule engine into a state machine with enforced role transitions.

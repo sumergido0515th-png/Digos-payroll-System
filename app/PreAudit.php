@@ -31,6 +31,7 @@ use Digos\Repo\MemorandumRepo;
 use Digos\Repo\PayrollRepo;
 use Digos\Repo\ReferenceRepo;
 use Digos\Repo\ScopeGrantRepo;
+use Digos\Repo\SuspensionRepo;
 use Digos\Repo\WorkShiftRepo;
 
 /**
@@ -58,6 +59,54 @@ function apiRunPreAudit(array $p, array $user): array
         'findings' => $findings,
         'counts' => preAuditCounts($findings),
         'blocked' => Severity::blocks(RuleEngine::validate($context)),
+    ];
+}
+
+/**
+ * The pre-auditor's queue: payrolls awaiting review or already suspended,
+ * within scope, oldest-waiting first.
+ *
+ * Findings are NOT recomputed here for every row - apiRunPreAudit does that,
+ * once, when a specific payroll is opened. Running the rule engine over an
+ * entire queue on every list refresh would make the worklist itself the slow
+ * part of the workflow it exists to speed up.
+ */
+function apiGetWorklist(array $p, array $user): array
+{
+    $forReview = PayrollRepo::listScoped($user, ['Status' => 'FOR_PRE_AUDIT']);
+    $suspended = PayrollRepo::listScoped($user, ['Status' => 'SUSPENDED']);
+
+    $rows = [];
+    foreach ($forReview as $payroll) {
+        $rows[] = worklistRow($payroll, (string) ($payroll['SubmittedAt'] ?? $payroll['DateCreated']), []);
+    }
+    foreach ($suspended as $payroll) {
+        $open = SuspensionRepo::openFor((string) $payroll['PayrollNo']);
+        $since = $open ? min(array_column($open, 'RaisedAt'))
+            : (string) ($payroll['SubmittedAt'] ?? $payroll['DateCreated']);
+        $rows[] = worklistRow($payroll, $since, $open);
+    }
+
+    usort($rows, fn(array $a, array $b) => $a['AgingSince'] <=> $b['AgingSince']);
+
+    return ['rows' => $rows,
+        'counts' => ['ForPreAudit' => count($forReview), 'Suspended' => count($suspended)]];
+}
+
+/** @param array<int, array<string, mixed>> $openSuspensions */
+function worklistRow(array $payroll, string $agingSince, array $openSuspensions): array
+{
+    return [
+        'PayrollNo' => $payroll['PayrollNo'],
+        'PeriodID' => $payroll['PeriodID'],
+        'OfficeCode' => $payroll['OfficeCode'],
+        'Status' => $payroll['Status'],
+        'TotalNet' => $payroll['TotalNet'],
+        'PreparedBy' => $payroll['PreparedBy'],
+        'AgingSince' => $agingSince,
+        'OpenSuspensions' => array_map(fn(array $s) => [
+            'NsNo' => $s['NsNo'], 'GroundCode' => $s['GroundCode'], 'EmployeeID' => $s['EmployeeID'],
+        ], $openSuspensions),
     ];
 }
 

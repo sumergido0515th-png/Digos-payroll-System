@@ -64,7 +64,7 @@ final class DeleteGuardTest extends TestCase
             ->execute([self::PERIOD, 'July', 2026, '2026-07-01', '2026-07-15', 'Open']);
         $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, FunctionCode, Status)
                       VALUES (?, ?, ?, ?, ?)')
-            ->execute([self::PAYROLL, self::PERIOD, self::OFFICE, self::FUNC, 'Approved']);
+            ->execute([self::PAYROLL, self::PERIOD, self::OFFICE, self::FUNC, 'PRE_AUDIT_APPROVED']);
     }
 
     private function removeFixture(): void

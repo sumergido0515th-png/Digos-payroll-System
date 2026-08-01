@@ -11,17 +11,15 @@
         <div class="col-md-3"><label class="form-label">Period</label>
           <select class="form-select form-select-sm" id="pp-period"></select></div>
         <div class="col-md-3"><label class="form-label">Status</label>
-          <select class="form-select form-select-sm" id="pp-status">
-            <!-- Submitted (Pending) is in the default so a payroll can be
-                 previewed while it is being corrected - re-scan, re-verify,
-                 re-preview - without changing a filter to find it. Draft is
-                 deliberately NOT in the default: it has not been submitted,
-                 and offering it as printable by default is how an unfinished
-                 payroll gets printed. It stays one dropdown away. -->
-            <option value="">Submitted, Approved &amp; Released</option>
-            <option>Draft</option><option>Pending</option>
-            <option>Approved</option><option>Released</option>
-          </select></div>
+          <!-- Options are filled from the live status list in init(), like the
+               Payroll Transactions filter - a state added later appears here
+               with no template edit. FOR_PRE_AUDIT is in the default so a
+               payroll can be previewed while it is being corrected - re-scan,
+               re-verify, re-preview - without changing a filter to find it.
+               DRAFT is deliberately NOT in the default: it has not been
+               submitted, and offering it as printable by default is how an
+               unfinished payroll gets printed. It stays one dropdown away. -->
+          <select class="form-select form-select-sm" id="pp-status"></select></div>
       </div>
     </div>
   </div>
@@ -43,7 +41,10 @@
 Pages.print = (function () {
 
   /** Statuses shown when no explicit status filter is chosen. */
-  var DEFAULT_STATUSES = ['Pending', 'Approved', 'Released'];
+  var DEFAULT_STATUSES = ['FOR_PRE_AUDIT', 'PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED', 'SUBMITTED'];
+
+  /** Statuses whose printed forms are the official document - see PrintDoc.php. */
+  var OFFICIAL_STATUSES = ['PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED', 'SUBMITTED'];
 
   /** Loads printable payrolls (submitted and later, by default). */
   function load() {
@@ -71,13 +72,13 @@ Pages.print = (function () {
           actionBtn('savings', 'Pages.print.form(\'' + r.PayrollNo + '\',\'pagibig\')') +
           actionBtn('summarize', 'Pages.print.form(\'' + r.PayrollNo + '\',\'summary\')') +
           actionBtn('fact_check', 'Pages.print.form(\'' + r.PayrollNo + '\',\'cafoa\')') +
-          (can('payroll.release') && (r.Status === 'Approved' || r.Status === 'Released') ?
+          (can('payroll.release') && OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
             actionBtn('forward_to_inbox', 'Pages.print.email(\'' + r.PayrollNo + '\')') : '') +
           '</td></tr>';
       }).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">' +
         (status ? 'No ' + esc(status) + ' payrolls found.'
-                : 'No submitted, approved or released payrolls found. ' +
-                  'Choose Draft above to see payrolls still being prepared.') +
+                : 'No payrolls awaiting or past pre-audit sign-off were found. '
+                  + 'Choose Draft above to see payrolls still being prepared.') +
         '</td></tr>';
     });
   }
@@ -86,6 +87,8 @@ Pages.print = (function () {
     init: function () {
       document.getElementById('pp-period').innerHTML =
         options(App.lookups.periods, 'PeriodID', 'PeriodID', '', 'All Periods');
+      document.getElementById('pp-status').innerHTML =
+        options(App.lookups.payrollStatuses, null, null, '', 'Awaiting or past pre-audit');
       document.getElementById('pp-search').oninput = debounce(load);
       document.getElementById('pp-period').onchange = load;
       document.getElementById('pp-status').onchange = load;

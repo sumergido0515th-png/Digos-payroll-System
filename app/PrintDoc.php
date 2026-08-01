@@ -64,7 +64,7 @@ const CAFOA_ALLOTMENT = '200';
  */
 function payrollPrintIsOfficial(string $status): bool
 {
-    return in_array($status, ['Approved', 'Released'], true);
+    return \Digos\Domain\Workflow\PayrollWorkflow::isOfficial($status);
 }
 
 /**
