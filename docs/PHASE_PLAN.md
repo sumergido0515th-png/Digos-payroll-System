@@ -506,7 +506,7 @@ Well-scoped, moderate complexity. Good candidate for a single focused session ra
 
 ## Phase 8 — Print Gating & Certification
 
-**Status:** NOT STARTED
+**Status:** DONE (2026-08-01)
 **Depends on:** Phase 6, Phase 7
 
 ### Objective
@@ -549,6 +549,63 @@ Editing a locked payroll and attempting print is refused and logged. Hash mismat
 
 ### Token-saving notes
 Low logic complexity, mostly template/formatting work. Cheap phase — should not require significant rework if Phases 6–7 are solid.
+
+### What actually landed
+
+`Payroll.PayloadHash` (migration `0024`) is computed at every `PRE_AUDIT_APPROVED` transition —
+both the plain approval in `payrollTransition()` and the clean half of a suspension split in
+`raiseSuspensionsAndSplit()` — over exactly what an Official print renders: the PayrollDetails
+lines, the attachment coverage justifying them, and the holidays declared over the period
+(`Digos\Domain\Print\PayloadHash`, pure, canonical-JSON + sha256). `apiGetPrintHtml`'s new
+`official: true` path (`guardOfficialPrint()`) recomputes and compares; a mismatch reverts the
+payroll to `FOR_PRE_AUDIT`, logs a `PRINT_HASH_MISMATCH` audit entry explicitly (a thrown refusal
+never reaches `api.php`'s automatic post-success log, the same reason `Auth.php`'s
+`LOGIN_FAILED` writes its own), and refuses the print. Exit gate: `tests/Integration/
+PrintGatingTest.php`, 12 tests, edit-then-print proven with a real fixture and a real negative
+proof.
+
+**Narrower than the plan's own hash spec, on purpose:** `shift_versions` is not hashed. There is
+no per-employee shift assignment anywhere in the data model to derive it from without a caller
+supplying one — `preAuditContext()` already treats `ShiftCode` as optional caller input, not
+something derivable from the payroll alone. Recorded in `PayloadHash`'s own docblock and
+migration `0024`'s header rather than silently dropped.
+
+`PrintLog` (also `0024`) is the print-serial + reprint-reason record: one row per Official print
+attempt, serials drawn from `Counters` with `Series = 'PRINT'` (the same pattern Phase 7 gave
+suspensions). A second Official print of a given payroll+form is refused without a reprint
+reason; the first needs none. Three new print artifacts in `PrintDoc.php` — Certification cover
+sheet (re-runs the rule engine live, since the payload hash is exactly what makes that safe;
+lists findings by severity, suspensions, approver identity/timestamp, the hash itself), Notice of
+Suspension slip (per `NsNo`), Settlement report (settled/waived suspensions) — all reachable
+through the same `apiGetPrintHtml` dispatch as the four Phase 2 forms, so they inherit scope
+checking and the Official gate for free.
+
+`public/print.php` — the standalone bookmarkable `?no=...` endpoint — was quietly the largest
+risk found mid-phase: it called `buildFormHtml()` directly, a second unguarded path to every
+printed form that never assigned a serial, never checked the hash, and never enforced a reprint
+reason regardless of a `?official=` query string. Rewired to delegate to `apiGetPrintHtml()`
+itself, so both entry points share one gate. Fixing that path also revealed it had its own manual
+`PREVIEW`/`PRINT` audit logging that a naive delegation would have silently dropped (calling the
+handler in-process bypasses `api.php`'s automatic per-route log) — restored explicitly rather
+than lost.
+
+"Mandatory PDF preview before Official print — no direct browser print" is implemented without a
+new PDF library (the `EXECUTION_BUDGET.md` note that this needed "a PDF library decision" is
+resolved as: no new dependency). The SPA's new "Print Official" action shows the Draft rendering
+in an iframe inside a confirmation modal first; only the explicit "Confirm & Print Official"
+click calls the gated endpoint, and `window.print()` is never reachable before that round trip
+completes. This keeps the no-framework/no-build-step platform decision intact.
+
+**Cut, per `EXECUTION_BUDGET.md`'s own guidance** ("keep hash verification and print gating,
+which are the integrity-critical parts"): the amendment flow (post-lock corrections generating a
+Supplemental/Amended Payroll + variance sheet). Logged in Backlog below rather than built on a
+guess at requirements no accounting stakeholder has yet reviewed.
+
+**A pre-existing issue found while live-probing this phase, not caused by it:**
+`apiApprovePayroll`'s audit log entry stores the caller's password in cleartext in
+`Logs.Details` — `auditSummary()` redacts inline `data:` URLs but not a `Password` field, and
+`APPROVE_PAYROLL`'s logged action is the raw payload. Pre-dates Phase 8; flagged here because
+this is where it surfaced. See Backlog.
 
 ---
 
@@ -624,6 +681,21 @@ One live payroll period processed end-to-end with zero manual override needed.
 - **Two offices are duplicates.** `OCEEM` and `OCM` are both named "OCEEM public market", and payroll history now hangs off both (`DIG-2026-000004` charges `OCM`). Merging them after Phase 2 means rewriting scope grants as well as payroll rows; it is cheapest now and it is data entry, not code. Related to the Function/PPA item above — the same four offices need attention either way.
 - **Deleting an employee still cascades their contract and DTR history away.** `apiDeleteEmployee` refuses when the employee appears on a payroll line, but `Contracts` and `DtrDays` are `ON DELETE CASCADE`, so an employee never yet paid loses their rate history and timekeeping silently. Harmless while `DtrDays` is empty; revisit when Phase 3B fills it.
 - **Undo is still a single global `Settings` row.** `GAP_MAP` already flags this (`_PayrollUndo`, two users' undos collide, no audit narrative). One outright bug was fixed in place — undoing a status change on a deleted payroll updated zero rows and reported success — but the redesign belongs to whichever phase revisits audit integrity, not to Phase 1.
+- **Phase 8's amendment flow was cut**, per `EXECUTION_BUDGET.md`'s own guidance to keep hash
+  verification and print gating over this piece specifically. Post-lock corrections currently
+  have no path at all other than a fresh suspension cycle back through `FOR_PRE_AUDIT` — there is
+  no Supplemental/Amended Payroll + variance sheet for a correction discovered after `SUBMITTED`.
+  Needs an accounting/audit stakeholder's sign-off on what a variance sheet should actually show
+  before it is worth building against a guess.
+- **`apiApprovePayroll`'s audit log stores the caller's password in cleartext**, found live-probing
+  Phase 8, not caused by it. `auditSummary()` (`app/Helpers.php`) redacts inline `data:` URLs from
+  a logged payload but nothing else, and `APPROVE_PAYROLL`'s `ROUTES` entry logs the raw payload -
+  which includes `Password`, sent for `reauthenticate()`. Every approval leaves that pre-auditor's
+  password sitting in `Logs.Details` in plain text. **Should be treated as urgent** given it is a
+  live credential exposure in a table several roles can read (`log.view`), not deferred like the
+  rest of this list - fix is narrow (redact `Password`/similar keys in `auditSummary()`, same shape
+  as the existing `data:` redaction) but touches the audit trail every role trusts, so it wants its
+  own reviewed change rather than a drive-by edit inside an unrelated phase.
 
 ---
 
@@ -650,3 +722,4 @@ One live payroll period processed end-to-end with zero manual override needed.
 | 2026-07-29 | **New guard: every route permission must be one some role can hold.** Nothing checked that a `ROUTES` permission string appears in any role's `PERMISSIONS`, so a typo — `scope.manag` — leaves the route reachable by administrators alone through `'*'`: it fails closed, but silently, and works for whoever built it while being invisibly broken for every other role. Verified by introducing that exact typo. Its first real run found `employee.delete`, which **no role has ever held on either side of the role remap** — employee deletion has been administrator-only since Phase 0. Recorded in `ADMIN_ONLY_PERMISSIONS` rather than granted to HRMO, because handing a role a destructive power it never had is a policy decision, not a side effect of adding a test. **Worth a deliberate answer before Phase 7** builds its permission matrix on these roles |
 | 2026-07-29 | **Phase 1 signed off; status `DONE`; Phase 2 unblocked.** Decision 1 (Tier 1 / Tier 2 split) **accepted** — lands as Phase 2's first migration, atomically with the gateway; until then every role holding `employee.view` still reads Tier 2, which is `GAP_MAP` finding 4 unchanged. Decision 2 (three self-approved payrolls) **grandfathered** as development records, with the three payroll numbers named in the Backlog so Phase 7 does not assume every historical approval passes the new rule. Decision 3 (`Contracts`) **accepted** — triaged out of the Backlog into **Phase 3**'s task list. Decision 4 (Function/PPA per office) **outstanding, owner entering** — it does not gate Phase 2, it gates **Phase 6**, where the CAFOA rules would pass vacuously rather than fail against four NULL functions |
 | 2026-07-29 | **Phase 1 re-verified against the live database before sign-off; three defects found and fixed, none of which change the four open decisions.** (1) `0013` never backfilled `PayrollDetails.ChargedOfficeCode` — two lines still NULL, closed by `0014`; `SCHEMA.md`'s rule that a NULL there means the write path regressed would have misdiagnosed it, and now says so. (2) **The delete guards never caught up with `0009`'s foreign keys**: deleting an office with payroll history returned `SQLSTATE ... 1451 a foreign key constraint fails` to the user, and deleting a Function/PPA — unguarded, `ON DELETE SET NULL` — silently blanked `FunctionCode` on *approved* payrolls, erasing which appropriation paid them. Both refuse in plain words now, asserted by `tests/Integration/DeleteGuardTest.php`. (3) **The test harness could have written to the live database** — `TestDatabase` guards its own connection, but `DB::` reads the `DB_NAME` constant, which `app/config.php` defaults to the working database; `tests/bootstrap.php` now pins it first. Phase 2's gateway tests would have been the first to hit that. Suite is 55 tests. Backlog gained five items, all parked rather than chased |
+| 2026-08-01 | **Phase 8 closed.** Payload hash (migration `0024`) computed at `PRE_AUDIT_APPROVED` over PayrollDetails + attachment coverage + holidays, recomputed and compared at Official print time; a mismatch reverts to `FOR_PRE_AUDIT` and logs `PRINT_HASH_MISMATCH` explicitly, since a thrown refusal never reaches `api.php`'s automatic post-success log. Print serials and reprint reasons (`PrintLog`), three new print artifacts (Certification, Notice of Suspension, Settlement report), and a mandatory-preview-then-confirm SPA flow for Official print — no new PDF library, resolving the `EXECUTION_BUDGET.md` open question. **`public/print.php` turned out to be a second, unguarded path to every printed form** — it called `buildFormHtml()` directly and never went through the new gate regardless of a `?official=` query string; rewired to delegate through `apiGetPrintHtml()`, which also meant restoring its own `PREVIEW`/`PRINT` audit logging that a naive delegation would have silently dropped (an in-process call bypasses `api.php`'s automatic per-route log). Amendment flow cut per `EXECUTION_BUDGET.md`'s own guidance; logged to Backlog. **Live-probing the exit gate over real HTTP found migration `0024` had only been applied to the test database, not the working one** — phpunit alone could not have caught that, since it always runs against the test database; fixed before sign-off. That same probe surfaced an unrelated, pre-existing issue — `apiApprovePayroll` logs the caller's password in cleartext — flagged as urgent in Backlog rather than fixed inline, since it touches the audit trail every role trusts. Suite is 366 tests |

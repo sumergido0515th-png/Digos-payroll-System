@@ -86,6 +86,33 @@ final class PayrollRepo
     }
 
     /**
+     * Every line of a payroll, regardless of the caller's scope over the
+     * charged office.
+     *
+     * NAMED PATH, LIKE EmployeeRepo::findForComputation(). Phase 8's payload
+     * hash represents what the payroll IS, not what one particular caller's
+     * grants happen to expose of it - detailsScoped() filters lines by
+     * ChargedOfficeCode, so a payroll split across two offices would hash
+     * differently depending on whether the approver's or the printer's scope
+     * ran the computation, which is a false tamper alarm on every such
+     * payroll rather than a real one.
+     *
+     * Safe here for the same reason it is safe there: the header is already
+     * scope-checked via findScoped() before either caller (approval, print)
+     * ever reaches this method, so an unscoped line read at this specific,
+     * already-gated point discloses nothing a direct query elsewhere would
+     * not have.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function detailsUnscoped(string $payrollNo): array
+    {
+        return DB::rows(
+            'SELECT * FROM PayrollDetails WHERE PayrollNo = ? ORDER BY LineNo',
+            [$payrollNo]);
+    }
+
+    /**
      * Employees appearing on another non-cancelled payroll over these dates.
      *
      * DELIBERATELY UNSCOPED, and the only method here that is. An employee paid

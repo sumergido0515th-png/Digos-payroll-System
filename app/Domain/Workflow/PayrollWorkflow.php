@@ -34,18 +34,28 @@ namespace Digos\Domain\Workflow;
 
 final class PayrollWorkflow
 {
-    /** Legal transitions, keyed by the status a payroll is leaving. */
+    /**
+     * Legal transitions, keyed by the status a payroll is leaving.
+     *
+     * PRE_AUDIT_APPROVED/FOR_PRINTING/PRINTED -> FOR_PRE_AUDIT is Phase 8's
+     * tamper revert alone - nothing a user requests, only what
+     * Payroll::verifyPayloadHashOrRevert() triggers when an Official print's
+     * recomputed hash no longer matches what was approved. It is listed here
+     * rather than bypassing canTransition() because a transition this class
+     * does not know about is exactly the kind of silent exception the graph
+     * exists to rule out.
+     */
     public const FLOW = [
         'DRAFT' => ['FOR_PRE_AUDIT', 'CANCELLED'],
         'FOR_PRE_AUDIT' => ['PRE_AUDIT_APPROVED', 'SUSPENDED', 'RETURNED_TO_PREPARER', 'CANCELLED'],
-        'PRE_AUDIT_APPROVED' => ['SUSPENDED', 'FOR_PRINTING', 'CANCELLED'],
-        'FOR_PRINTING' => ['PRINTED', 'CANCELLED'],
+        'PRE_AUDIT_APPROVED' => ['SUSPENDED', 'FOR_PRINTING', 'CANCELLED', 'FOR_PRE_AUDIT'],
+        'FOR_PRINTING' => ['PRINTED', 'CANCELLED', 'FOR_PRE_AUDIT'],
 
         // A printed batch can still be voided before it reaches the paying
         // office - SUBMITTED is the actual point of no return, since money
         // moves after that. Cancelling here does not un-print the physical
         // form; Phase 8's reprint-reason trail is where that gets recorded.
-        'PRINTED' => ['SUBMITTED', 'CANCELLED'],
+        'PRINTED' => ['SUBMITTED', 'CANCELLED', 'FOR_PRE_AUDIT'],
         'SUSPENDED' => ['FOR_PRE_AUDIT'],
         'RETURNED_TO_PREPARER' => ['FOR_PRE_AUDIT', 'CANCELLED'],
         'SUBMITTED' => [],

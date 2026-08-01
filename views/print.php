@@ -72,6 +72,11 @@ Pages.print = (function () {
           actionBtn('savings', 'Pages.print.form(\'' + r.PayrollNo + '\',\'pagibig\')') +
           actionBtn('summarize', 'Pages.print.form(\'' + r.PayrollNo + '\',\'summary\')') +
           actionBtn('fact_check', 'Pages.print.form(\'' + r.PayrollNo + '\',\'cafoa\')') +
+          (OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
+            actionBtn('assignment_turned_in', 'Pages.print.form(\'' + r.PayrollNo + '\',\'certification\')') +
+            actionBtn('account_balance_wallet', 'Pages.print.form(\'' + r.PayrollNo + '\',\'settlement\')') : '') +
+          (can('print.run') && OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
+            actionBtn('verified', 'Pages.print.official(\'' + r.PayrollNo + '\')', 'text-success') : '') +
           (can('payroll.release') && OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
             actionBtn('forward_to_inbox', 'Pages.print.email(\'' + r.PayrollNo + '\')') : '') +
           '</td></tr>';
@@ -110,6 +115,46 @@ Pages.print = (function () {
     pdf: function (no) {
       toast('Opening print view - choose "Save as PDF" in the print dialog.', 'info');
       window.open('print.php?no=' + encodeURIComponent(no), '_blank');
+    },
+
+    /**
+     * The gated Official print: a mandatory preview first (this is "no
+     * direct browser print" - window.print() is never reachable from here
+     * before the server has actually assigned a serial), then an explicit
+     * confirmation that calls apiGetPrintHtml with official:true. A second
+     * Official print of the same form is refused server-side without a
+     * Reprint Reason; the field is offered up front so the common case
+     * (a genuine reprint) does not need a failed attempt first.
+     */
+    official: function (no) {
+      busy(api('apiGetPrintHtml', { PayrollNo: no, form: 'payroll' })).then(function (preview) {
+        openModal('Confirm Official Print - ' + no,
+          '<div class="alert alert-warning py-2 small mb-2">' +
+          'Printing Official assigns a permanent print serial and is logged. ' +
+          'If this form has already been printed Official once for this payroll, ' +
+          'a reprint reason is required.</div>' +
+          '<div class="mb-2"><label class="form-label">Reprint Reason (if applicable)</label>' +
+          '<input class="form-control form-control-sm" id="pp-official-reason"></div>' +
+          '<iframe id="pp-official-frame" style="width:100%;height:45vh;border:1px solid #ccc"></iframe>',
+          [
+            { label: 'Cancel', cls: 'btn-outline-secondary', onclick: closeModal },
+            {
+              label: 'Confirm & Print Official', onclick: function () {
+                var reason = document.getElementById('pp-official-reason').value;
+                busy(api('apiGetPrintHtml',
+                  { PayrollNo: no, form: 'payroll', official: true, ReprintReason: reason }))
+                  .then(function (result) {
+                    closeModalSaved();
+                    var win = window.open('', '_blank');
+                    win.document.write(result.html);
+                    win.document.close();
+                    toast('Printed Official. Use the new tab\'s Print button for paper or PDF.');
+                  });
+              }
+            }
+          ]);
+        document.getElementById('pp-official-frame').srcdoc = preview.html;
+      });
     },
 
     /** Emails payslips to every employee on the payroll. */

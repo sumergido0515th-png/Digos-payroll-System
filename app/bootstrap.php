@@ -27,6 +27,7 @@ require_once __DIR__ . '/Domain/Rules/Severity.php';
 require_once __DIR__ . '/Domain/Rules/Finding.php';
 require_once __DIR__ . '/Domain/Rules/RuleEngine.php';
 require_once __DIR__ . '/Domain/Workflow/PayrollWorkflow.php';
+require_once __DIR__ . '/Domain/Print/PayloadHash.php';
 require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
 require_once __DIR__ . '/Repo/ScopeGateway.php';
 require_once __DIR__ . '/Repo/EmployeeRepo.php';
@@ -42,6 +43,7 @@ require_once __DIR__ . '/Repo/DtrRepo.php';
 require_once __DIR__ . '/Repo/HolidayRepo.php';
 require_once __DIR__ . '/Repo/AttachmentRepo.php';
 require_once __DIR__ . '/Repo/SuspensionRepo.php';
+require_once __DIR__ . '/Repo/PrintLogRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';

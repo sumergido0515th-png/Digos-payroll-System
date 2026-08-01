@@ -44,6 +44,21 @@ final class PayrollWorkflowTest extends TestCase
         $this->assertSame(['FOR_PRE_AUDIT', 'CANCELLED'], PayrollWorkflow::FLOW['RETURNED_TO_PREPARER']);
     }
 
+    /**
+     * Phase 8's tamper revert: every official-but-not-yet-submitted state can
+     * fall back to FOR_PRE_AUDIT when a print-time hash mismatch is caught,
+     * but SUBMITTED never does - money has already moved.
+     */
+    public function testEveryOfficialPreSubmissionStateCanRevertToPreAuditOnTamper(): void
+    {
+        foreach (['PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED'] as $status) {
+            $this->assertTrue(PayrollWorkflow::canTransition($status, 'FOR_PRE_AUDIT'),
+                "$status should be able to revert to FOR_PRE_AUDIT on a hash mismatch.");
+        }
+        $this->assertFalse(PayrollWorkflow::canTransition('SUBMITTED', 'FOR_PRE_AUDIT'),
+            'A SUBMITTED payroll must never revert - it is the actual point of no return.');
+    }
+
     /** SUBMITTED and CANCELLED are where the graph actually ends. */
     public function testSubmittedAndCancelledAreTerminal(): void
     {

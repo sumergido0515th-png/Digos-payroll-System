@@ -17,23 +17,33 @@ try {
     if ($no === '') throw new RuntimeException('Missing payroll number (?no=...).');
     $form = (string) ($_GET['form'] ?? 'payroll');
 
-    // Resolved here as well as inside buildFormHtml, because the audit action
-    // depends on the payroll's status and that decision belongs outside the
-    // renderer. Two scoped lookups on a primary key is the cost.
-    //
-    // PREVIEW and PRINT are separate deliberately: "pages printed per period"
-    // is one of the project's post-launch metrics - the resource waste this
-    // system exists to reduce - and the review loop this screen supports is
-    // designed to produce many previews. Counting a reviewer opening a draft
-    // six times as six pages printed would make the baseline meaningless.
-    $header = \Digos\Repo\PayrollRepo::findScoped($user, $no);
-    if (!$header) throw new RuntimeException('Payroll not found: ' . $no);
+    // Delegates to apiGetPrintHtml() rather than calling buildFormHtml()
+    // directly, as this file did before Phase 8. That direct call was a
+    // second, unguarded path to every printed form: it never assigned a
+    // serial, never checked the payload hash, and never enforced a reprint
+    // reason, regardless of ?official= - the whole gate lived only in the
+    // SPA's API route and this bookmarkable URL walked straight around it.
+    $result = apiGetPrintHtml([
+        'PayrollNo' => $no,
+        'form' => $form,
+        'NsNo' => (string) ($_GET['ns'] ?? ''),
+        'official' => !empty($_GET['official']),
+        'ReprintReason' => (string) ($_GET['reason'] ?? ''),
+    ], $user);
 
-    $action = payrollPrintIsOfficial((string) $header['Status']) ? 'PRINT' : 'PREVIEW';
-    writeLog($user['Email'], $action, 'Print',
-        $no . ' [' . $form . '] ' . $header['Status']);
+    // This file talks to apiGetPrintHtml() in-process rather than through
+    // api.php's HTTP dispatcher, so its automatic per-route audit log never
+    // fires here - recordOfficialPrint() already wrote PrintLog for an
+    // Official request, but a plain preview would otherwise leave no trace
+    // at all. PREVIEW and PRINT stay distinct because "pages printed per
+    // period" is one of the project's post-launch metrics, and the review
+    // loop this screen supports is designed to produce many previews -
+    // counting a reviewer opening a Draft six times as six pages printed
+    // would make that baseline meaningless.
+    writeLog($user['Email'], $result['official'] ? 'PRINT' : 'PREVIEW', 'Print',
+        $no . ' [' . $form . ']' . ($result['official'] ? ' Official' : ''));
 
-    echo buildFormHtml($no, $form, $user);
+    echo $result['html'];
 
 } catch (Throwable $e) {
     http_response_code(403);

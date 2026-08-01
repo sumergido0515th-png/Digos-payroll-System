@@ -46,6 +46,11 @@ const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Fu
     // names a PayrollNo and sometimes an EmployeeID, both of which have to
     // already exist when this row lands during a restore.
     'Suspensions',
+    // Phase 8. After Payroll, for the same reason as Suspensions - every row
+    // names a PayrollNo. Without this, a restore recreates a payroll with no
+    // record of what was ever printed from it, which is indistinguishable
+    // from nothing having been printed.
+    'PrintLog',
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.

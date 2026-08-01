@@ -123,6 +123,8 @@ Pages.preaudit = (function () {
           return '<li>' + esc(s.NsNo) + ' - ' + esc(s.GroundCode) +
             (s.EmployeeID ? ' [' + esc(s.EmployeeID) + ']' : ' [whole batch]') +
             ': ' + esc(s.Particulars) +
+            ' <a class="small" target="_blank" href="print.php?no=' + encodeURIComponent(row.PayrollNo) +
+            '&form=ns&ns=' + encodeURIComponent(s.NsNo) + '">Print NS</a>' +
             ' <button class="btn btn-sm btn-outline-secondary py-0 px-1" ' +
             'onclick="Pages.preaudit.settleForm(\'' + s.NsNo + '\')">Settle</button></li>';
         }).join('') + '</ul></div>'

@@ -17,10 +17,14 @@
 
 declare(strict_types=1);
 
+use Digos\Domain\Print\PayloadHash;
 use Digos\Domain\Rules\RuleEngine;
 use Digos\Domain\Workflow\PayrollWorkflow;
+use Digos\Repo\AttachmentRepo;
 use Digos\Repo\EmployeeRepo;
+use Digos\Repo\HolidayRepo;
 use Digos\Repo\PayrollRepo;
+use Digos\Repo\ReferenceRepo;
 use Digos\Repo\ScopeGateway;
 use Digos\Repo\SuspensionRepo;
 
@@ -474,7 +478,14 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
     // sit unedited for weeks before anyone submits it, and the pre-auditor
     // worklist sorts its queue by how long a payroll has actually been
     // waiting for review, not by how long it has existed.
-    if ($to === 'FOR_PRE_AUDIT') $patch['SubmittedAt'] = date('Y-m-d H:i:s');
+    //
+    // PayloadHash is cleared here too, whether this is a fresh submission (it
+    // was never set) or Phase 8's tamper revert (it just proved stale) -
+    // either way there is no valid hash for a payroll back in review.
+    if ($to === 'FOR_PRE_AUDIT') {
+        $patch['SubmittedAt'] = date('Y-m-d H:i:s');
+        $patch['PayloadHash'] = null;
+    }
 
     if ($to === 'PRE_AUDIT_APPROVED') {
         // As with PreparedBy on save: the display name is for the printed
@@ -482,6 +493,8 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
         $patch['ApprovedBy'] = $user['FullName'] ?: $user['Email'];
         $patch['ApprovedByUser'] = $user['Email'];
         $patch['ApprovedAt'] = date('Y-m-d H:i:s');
+        $patch['PayloadHash'] = computePayloadHash(
+            PayrollRepo::detailsUnscoped($payrollNo), (string) $header['PeriodID']);
     }
     if ($to === 'SUBMITTED') $patch['ReleasedAt'] = date('Y-m-d H:i:s');
 
@@ -489,6 +502,32 @@ function payrollTransition(string $payrollNo, string $to, array $user): array
     setUndo(['action' => 'status', 'PayrollNo' => $payrollNo,
         'prevStatus' => $header['Status'], 'user' => $user['Email']]);
     return ['PayrollNo' => $payrollNo, 'Status' => $to];
+}
+
+/**
+ * Hashes exactly what an Official print renders - see PayloadHash's own
+ * docblock for which three inputs and why those three.
+ *
+ * Takes $lines directly rather than re-querying, so the split path
+ * (raiseSuspensionsAndSplit) can hash the clean half it is about to write
+ * before that write happens, and payrollTransition can hash the unscoped
+ * read it already needed for the same reason - see PayrollRepo::
+ * detailsUnscoped()'s own docblock for why this is unscoped throughout.
+ *
+ * @param array<int, array<string, mixed>> $lines
+ */
+function computePayloadHash(array $lines, string $periodId): string
+{
+    $employeeIds = array_values(array_unique(array_column($lines, 'EmployeeID')));
+    $period = ReferenceRepo::period($periodId);
+    $start = (string) ($period['StartDate'] ?? '');
+    $end = (string) ($period['EndDate'] ?? '');
+
+    return PayloadHash::compute(
+        $lines,
+        AttachmentRepo::coverageFor($employeeIds, $start, $end),
+        HolidayRepo::holidaysBetween($start, $end)
+    );
 }
 
 /** DRAFT or RETURNED_TO_PREPARER -> FOR_PRE_AUDIT. */
@@ -572,7 +611,7 @@ function raiseSuspensionsAndSplit(array $header, array $lines, array $toRaise, a
     $cleanRemains = !$batchWide && $blockedEmployeeIds
         && count(array_diff(array_column($lines, 'EmployeeID'), $blockedEmployeeIds)) > 0;
 
-    return DB::tx(function () use ($payrollNo, $lines, $toRaise, $user, $blockedEmployeeIds, $cleanRemains) {
+    return DB::tx(function () use ($header, $payrollNo, $lines, $toRaise, $user, $blockedEmployeeIds, $cleanRemains) {
         $raise = function (string $forPayrollNo) use ($toRaise, $user) {
             foreach ($toRaise as $entry) {
                 SuspensionRepo::raise(SuspensionRepo::nextNsNo(), [
@@ -608,6 +647,9 @@ function raiseSuspensionsAndSplit(array $header, array $lines, array $toRaise, a
             'ApprovedBy' => $user['FullName'] ?: $user['Email'],
             'ApprovedByUser' => $user['Email'],
             'ApprovedAt' => date('Y-m-d H:i:s'),
+            // Hashed from $split['clean'] directly, not re-queried - these are
+            // exactly the rows about to be written below, before the write.
+            'PayloadHash' => computePayloadHash($split['clean'], (string) $header['PeriodID']),
         ], 'PayrollNo', $payrollNo);
         DB::exec('DELETE FROM PayrollDetails WHERE PayrollNo = ?', [$payrollNo]);
         foreach ($split['clean'] as $line) {
@@ -629,6 +671,10 @@ function raiseSuspensionsAndSplit(array $header, array $lines, array $toRaise, a
         $supplemental['ApprovedAt'] = null;
         $supplemental['ReleasedAt'] = null;
         $supplemental['PdfFileId'] = '';
+        // Not the original's hash, computed above from $split['clean'] - the
+        // supplemental holds $split['suspended'], entirely different lines,
+        // and it is not PRE_AUDIT_APPROVED yet regardless.
+        $supplemental['PayloadHash'] = null;
         unset($supplemental['DateCreated']);        // a fresh payroll gets its own timestamp
 
         DB::insert('Payroll', $supplemental);
