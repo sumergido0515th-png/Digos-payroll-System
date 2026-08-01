@@ -81,6 +81,7 @@ final class MigrationColumnsAreUsedTest extends TestCase
     public function testEveryColumnAMigrationAddsIsReferencedInApp(): void
     {
         $appSource = $this->appSource();
+        $dropped = $this->droppedColumns();
         $unused = [];
 
         foreach ($this->migrationColumns() as $qualified => $file) {
@@ -89,6 +90,12 @@ final class MigrationColumnsAreUsedTest extends TestCase
             if (in_array($table, self::IGNORED_TABLES, true)) continue;
             if (isset(self::DEFERRED[$table . '.*'])) continue;
             if (isset(self::DEFERRED[$qualified])) continue;
+
+            // A column a later migration drops again was corrected, not left
+            // unwired - EmployeeSensitive.BIRDeductionRange (0022) survived
+            // one migration before 0023 replaced it with BIRTaxPercent. It
+            // cannot be named in app/ because it no longer exists to name.
+            if (isset($dropped[$qualified])) continue;
 
             if (!preg_match('/\b' . preg_quote($column, '/') . '\b/', $appSource)) {
                 $unused[] = sprintf('%s  (added by %s)', $qualified, $file);
@@ -156,6 +163,36 @@ final class MigrationColumnsAreUsedTest extends TestCase
         }
 
         return $columns;
+    }
+
+    /**
+     * Every `Table.Column` dropped by any migration's `ALTER TABLE ... DROP
+     * COLUMN`, regardless of which migration originally added it.
+     *
+     * A dropped column cannot be referenced in app/ because it no longer
+     * exists - requiring a reference would make correcting a column (drop it,
+     * add the right one under a new migration, per this project's own
+     * immutable-migration rule) permanently fail this guard.
+     *
+     * @return array<string,true>
+     */
+    private function droppedColumns(): array
+    {
+        $dropped = [];
+
+        foreach (glob(PROJECT_ROOT . '/migrations/*.sql') ?: [] as $path) {
+            $sql = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($path));
+
+            if (preg_match_all('/ALTER\s+TABLE\s+`?(\w+)`?(.*?);/is', $sql, $alters, PREG_SET_ORDER)) {
+                foreach ($alters as [, $table, $body]) {
+                    if (preg_match_all('/DROP\s+COLUMN\s+`?(\w+)`?/i', $body, $droppedCols)) {
+                        foreach ($droppedCols[1] as $column) $dropped["$table.$column"] = true;
+                    }
+                }
+            }
+        }
+
+        return $dropped;
     }
 
     /**

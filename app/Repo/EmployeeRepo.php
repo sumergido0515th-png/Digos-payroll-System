@@ -37,6 +37,7 @@ final class EmployeeRepo
         'TIN', 'GSIS', 'PhilHealth', 'PagIBIG', 'CashCard',
         'Birthdate', 'Gender', 'Address', 'Contact', 'Email',
         'SalaryRate', 'DailyRate', 'HourlyRate', 'MonthlyRate',
+        'SSSDeductionApproved', 'BIRTaxPercent',
     ];
 
     /**

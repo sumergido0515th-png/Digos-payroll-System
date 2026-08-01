@@ -331,6 +331,12 @@ function buildPrintHtml(string $payrollNo, array $user): string
                 ? trim((string) ($b['employees'][$employeeId]['CashCard'] ?? ''))
                 : '';
 
+            // RA 9994 senior citizens: the Pag-Ibig cell names the exemption
+            // instead of a deduction amount. Gated on $withSensitive because
+            // Birthdate is Tier 2, same as CashCard above.
+            $isSenior = $withSensitive
+                && isSeniorCitizen($b['employees'][$employeeId]['Birthdate'] ?? null);
+
             $rowsHtml .= '<tr>'
                 . '<td class="c">' . ($i + 1) . '</td>'
                 . '<td class="name">' . esc($l['name']) . '</td>'
@@ -342,7 +348,9 @@ function buildPrintHtml(string $payrollNo, array $user): string
                 . '<td class="c">' . ($l['extraQty'] > 0 ? esc($l['extraQty']) : '') . '</td>'
                 . '<td class="r">' . ($l['extra'] > 0 ? money($l['extra']) : '') . '</td>'
                 . '<td class="r">' . money($l['cafoa']) . '</td>'
-                . '<td class="r">' . ($l['pagibig'] > 0 ? money($l['pagibig']) : '') . '</td>'
+                . ($isSenior
+                    ? '<td class="c" style="font-size:6pt">Senior Citizen</td>'
+                    : '<td class="r">' . ($l['pagibig'] > 0 ? money($l['pagibig']) : '') . '</td>')
                 . '<td class="r">' . ($l['sss'] > 0 ? money($l['sss']) : '') . '</td>'
                 . '<td class="r">' . ($l['bir'] > 0 ? money($l['bir']) : '') . '</td>'
                 . '<td class="r"><b>' . money($l['net']) . '</b></td>'
@@ -569,6 +577,7 @@ function buildPagibigHtml(string $payrollNo, array $user): string
             $e = $b['employees'][$d['EmployeeID']] ?? [];
             $ee = num($d['OtherDeductions']);
             $total = round2($total + $ee);
+            $remarks = isSeniorCitizen($e['Birthdate'] ?? null) ? 'Senior Citizen' : '';
             $rowsHtml .= '<tr>'
                 . '<td>' . esc($e['PagIBIG'] ?? '') . '</td><td></td><td></td>'
                 . '<td>' . esc(strtoupper((string) ($e['LastName'] ?? ''))) . '</td>'
@@ -578,7 +587,7 @@ function buildPagibigHtml(string $payrollNo, array $user): string
                 . '<td class="c">' . esc($pv) . '</td>'
                 . '<td class="r">&#8369; ' . money($e['MonthlyRate'] ?? 0) . '</td>'
                 . '<td class="r">' . ($ee > 0 ? money($ee) : '') . '</td>'
-                . '<td></td><td></td></tr>';
+                . '<td></td><td class="c">' . esc($remarks) . '</td></tr>';
         } else {
             $rowsHtml .= '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td>'
                 . '<td></td><td></td><td></td><td></td><td></td><td></td></tr>';

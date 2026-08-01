@@ -52,6 +52,18 @@ function fmtDate(mixed $d, string $format = 'm/d/Y'): string
     }
 }
 
+/** Whether a birthdate makes someone a senior citizen under RA 9994 (60 or older). */
+function isSeniorCitizen(mixed $birthdate): bool
+{
+    if (!$birthdate) return false;
+    try {
+        $dob = new DateTime((string) $birthdate);
+        return $dob->diff(new DateTime())->y >= 60;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
 /** Builds "LAST, First M. Suffix" from an employee record. */
 function fullName(array $e): string
 {

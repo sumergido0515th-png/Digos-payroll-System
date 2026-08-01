@@ -111,6 +111,15 @@ Phase 1 **classifies**; Phase 2 **separates**. The classification is frozen here
 `Birthdate`, `Gender`, `Address`, `Contact`, `Email`, `SalaryRate`, `DailyRate`,
 `HourlyRate`, `MonthlyRate`.
 
+> **Added 2026-08-01 (migration `0022`, corrected by `0023`), same tier, same reasoning as
+> `CashCard`:** `SSSDeductionApproved` (whether the employee has approved an SSS deduction -
+> JO/COS are not compulsory SSS members) and `BIRTaxPercent` (the withholding rate, as a
+> percentage, BIR applies to them - `0022` first shipped this as a free-text range/bracket
+> field named `BIRDeductionRange`, corrected to a `DECIMAL(5,2)` percentage once the actual
+> requirement was clear). Both are payee financial data, not directory data, and are gated by
+> `employee.sensitive` like the rest of this tier. Current-state columns, not versioned - see
+> `0022`'s own header for why that is deliberate for now.
+
 > **Deliberate deviation from the task list, requiring sign-off.** The physical split into a
 > separate table is **not** in these migrations. Moving those columns breaks every reader
 > today — `SELECT *` in [Master.php:18](../app/Master.php#L18) among them — and separating

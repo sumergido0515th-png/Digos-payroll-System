@@ -150,6 +150,12 @@ Pages.employees = (function () {
       inp('TIN', 'TIN', 'text', 3) + inp('GSIS', 'GSIS', 'text', 3) +
       inp('PhilHealth', 'PhilHealth', 'text', 3) + inp('Pag-IBIG', 'PagIBIG', 'text', 3) +
       inp('Cash Card No.', 'CashCard', 'text', 3) +
+      '<div class="col-12 fw-bold text-primary small mt-2">BENEFITS &amp; DEDUCTIONS</div>' +
+      '<div class="col-md-4 d-flex align-items-end pb-1">' +
+      '<div class="form-check"><input class="form-check-input" type="checkbox" name="SSSDeductionApproved" ' +
+      'id="emp-sss-approved"' + (e.SSSDeductionApproved ? ' checked' : '') + '>' +
+      '<label class="form-check-label" for="emp-sss-approved">Employee approved SSS deduction</label></div></div>' +
+      inp('BIR Tax Percent (%)', 'BIRTaxPercent', 'number', 4, 'step="0.01" min="0" max="100"') +
       '<div class="col-12 fw-bold text-primary small mt-2">EMPLOYMENT</div>' +
       '<div class="col-md-4"><label class="form-label">Office *</label>' +
       '<select class="form-select form-select-sm" name="OfficeCode">' +

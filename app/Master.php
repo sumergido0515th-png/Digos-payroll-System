@@ -58,6 +58,9 @@ function apiSaveEmployee(array $p, array $user): array
     if (!empty($p['ContractStart']) && !empty($p['ContractEnd']) && $p['ContractStart'] > $p['ContractEnd']) {
         throw new RuntimeException('Contract End must fall on or after Contract Start.');
     }
+    if (($p['BIRTaxPercent'] ?? '') !== '' && !(num($p['BIRTaxPercent']) >= 0 && num($p['BIRTaxPercent']) <= 100)) {
+        throw new RuntimeException('BIR Tax Percent must be between 0 and 100.');
+    }
 
     if (!empty($p['EmployeeNo'])) {
         $clash = DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeNo = ? AND EmployeeID <> ?',
@@ -72,6 +75,8 @@ function apiSaveEmployee(array $p, array $user): array
         'TIN' => $p['TIN'] ?? '', 'GSIS' => $p['GSIS'] ?? '',
         'PhilHealth' => $p['PhilHealth'] ?? '', 'PagIBIG' => $p['PagIBIG'] ?? '',
         'CashCard' => $p['CashCard'] ?? '',
+        'SSSDeductionApproved' => !empty($p['SSSDeductionApproved']) ? 1 : 0,
+        'BIRTaxPercent' => ($p['BIRTaxPercent'] ?? '') !== '' ? num($p['BIRTaxPercent']) : null,
         'LastName' => $p['LastName'], 'FirstName' => $p['FirstName'],
         'MiddleName' => $p['MiddleName'] ?? '', 'Suffix' => $p['Suffix'] ?? '',
         // The date fields take `?? '' ?:` rather than a bare `?:` so that an

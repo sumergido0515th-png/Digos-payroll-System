@@ -72,9 +72,13 @@ final class PrintScopeTest extends TestCase
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
                 ->execute([$employeeId, 'Confidential' . $i, 'Name', $office,
                     'Job Order', 'JO', 'Utility Worker', 'Active']);
-            $db->prepare('INSERT INTO EmployeeSensitive (EmployeeID, PagIBIG, CashCard, MonthlyRate, DailyRate)
-                          VALUES (?, ?, ?, ?, ?)')
-                ->execute([$employeeId, 'PGB-' . $i, 'CASHCARD-' . $i, 11440.00, 520.00]);
+            // Employee 0 is a senior citizen (RA 9994); employee 1 is not -
+            // so tests can assert the label appears for one and not the other.
+            $birthdate = $i === 0 ? '1955-06-01' : '1995-06-01';
+            $db->prepare('INSERT INTO EmployeeSensitive
+                              (EmployeeID, PagIBIG, CashCard, Birthdate, MonthlyRate, DailyRate)
+                          VALUES (?, ?, ?, ?, ?, ?)')
+                ->execute([$employeeId, 'PGB-' . $i, 'CASHCARD-' . $i, $birthdate, 11440.00, 520.00]);
 
             $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                           VALUES (?, ?, ?, ?, ?)')
@@ -248,6 +252,39 @@ final class PrintScopeTest extends TestCase
         $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
         $this->assertStringNotContainsString('CASHCARD-0', $result['html'],
             'An Encoder without employee.sensitive saw the cash card number.');
+    }
+
+    /**
+     * RA 9994: a senior citizen's Pag-Ibig cell on the main form names the
+     * exemption instead of a deduction amount - same Tier 2 gate as the cash
+     * card column, since Birthdate lives in EmployeeSensitive too.
+     */
+    public function testTheMainFormNamesASeniorCitizenInThePagibigColumn(): void
+    {
+        $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED));
+
+        $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
+        $this->assertStringContainsString('Senior Citizen', $result['html'],
+            'The main form did not name the senior citizen employee.');
+    }
+
+    public function testTheMainFormHidesSeniorCitizenStatusWithoutTheSensitivePermission(): void
+    {
+        $result = $this->render(self::MY_PAYROLL, $this->user(self::ENCODER, 'Encoder'));
+
+        $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
+        $this->assertStringNotContainsString('Senior Citizen', $result['html'],
+            'An Encoder without employee.sensitive saw senior citizen status (Birthdate is Tier 2).');
+    }
+
+    /** The Pag-IBIG list's REMARKS column names a senior citizen too. */
+    public function testThePagibigListNamesASeniorCitizenInRemarks(): void
+    {
+        $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED), 'pagibig');
+
+        $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
+        $this->assertStringContainsString('Senior Citizen', $result['html'],
+            'The Pag-IBIG list did not name the senior citizen employee in REMARKS.');
     }
 
     /* --------------------------------------------------- partial scope */

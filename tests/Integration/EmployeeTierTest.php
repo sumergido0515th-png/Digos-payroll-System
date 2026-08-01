@@ -185,6 +185,53 @@ final class EmployeeTierTest extends TestCase
     }
 
     /**
+     * SSSDeductionApproved and BIRTaxPercent (0022, corrected by 0023) are
+     * consent/deduction data, classified Tier 2 for the same reason CashCard
+     * was: it is payee financial data, not directory data.
+     */
+    public function testSavingAnEmployeeWritesTheDeductionElections(): void
+    {
+        $saved = \apiSaveEmployee([
+            'LastName' => 'Reyes', 'FirstName' => 'Ana',
+            'EmploymentType' => 'Job Order', 'Position' => 'Clerk',
+            'OfficeCode' => self::OFFICE,
+            'SSSDeductionApproved' => true, 'BIRTaxPercent' => '15',
+        ], $this->user(self::HRMO, 'HRMO'));
+
+        $sensitive = EmployeeRepo::sensitive($saved['EmployeeID']);
+
+        $this->assertSame(1, (int) $sensitive['SSSDeductionApproved']);
+        $this->assertSame('15.00', (string) $sensitive['BIRTaxPercent']);
+    }
+
+    /** A rate outside 0-100 is a data-entry mistake, refused with a clear reason. */
+    public function testABirTaxPercentOutsideZeroToOneHundredIsRefused(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('between 0 and 100');
+
+        \apiSaveEmployee([
+            'LastName' => 'Bautista', 'FirstName' => 'Jose',
+            'EmploymentType' => 'Job Order', 'Position' => 'Clerk',
+            'OfficeCode' => self::OFFICE, 'BIRTaxPercent' => '150',
+        ], $this->user(self::HRMO, 'HRMO'));
+    }
+
+    /** An employee saved with no election posted defaults to not-approved. */
+    public function testAnUnpostedSssApprovalDefaultsToFalse(): void
+    {
+        $saved = \apiSaveEmployee([
+            'LastName' => 'Cruz', 'FirstName' => 'Pedro',
+            'EmploymentType' => 'Job Order', 'Position' => 'Clerk',
+            'OfficeCode' => self::OFFICE,
+        ], $this->user(self::HRMO, 'HRMO'));
+
+        $sensitive = EmployeeRepo::sensitive($saved['EmployeeID']);
+
+        $this->assertSame(0, (int) $sensitive['SSSDeductionApproved']);
+    }
+
+    /**
      * The payroll engine is a legitimate reader of the restricted tier -
      * computeLine() computes from DailyRate - so it gets a named path rather
      * than an exception to the rule.
