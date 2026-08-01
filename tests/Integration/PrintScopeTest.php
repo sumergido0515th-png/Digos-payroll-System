@@ -72,9 +72,9 @@ final class PrintScopeTest extends TestCase
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
                 ->execute([$employeeId, 'Confidential' . $i, 'Name', $office,
                     'Job Order', 'JO', 'Utility Worker', 'Active']);
-            $db->prepare('INSERT INTO EmployeeSensitive (EmployeeID, PagIBIG, MonthlyRate, DailyRate)
-                          VALUES (?, ?, ?, ?)')
-                ->execute([$employeeId, 'PGB-' . $i, 11440.00, 520.00]);
+            $db->prepare('INSERT INTO EmployeeSensitive (EmployeeID, PagIBIG, CashCard, MonthlyRate, DailyRate)
+                          VALUES (?, ?, ?, ?, ?)')
+                ->execute([$employeeId, 'PGB-' . $i, 'CASHCARD-' . $i, 11440.00, 520.00]);
 
             $db->prepare('INSERT INTO Payroll (PayrollNo, PeriodID, OfficeCode, Status, TotalNet)
                           VALUES (?, ?, ?, ?, ?)')
@@ -217,6 +217,37 @@ final class PrintScopeTest extends TestCase
             $this->assertArrayHasKey('html', $result,
                 "An Encoder cannot print the '$form' form: " . ($result['error'] ?? ''));
         }
+    }
+
+    /**
+     * The main form's "Signature or Thumbmark/Cash Card Number" column prints
+     * the employee's cash card number when one is on file, for a role entitled
+     * to the restricted tier - otherwise the cert on this form ("paid in
+     * cash... established his identity...") is signed off against a blank cell
+     * for someone who is not paid in cash at all.
+     */
+    public function testTheMainFormPrintsTheCashCardNumberWhenOnFile(): void
+    {
+        $result = $this->render(self::MY_PAYROLL, $this->user(self::SCOPED));
+
+        $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
+        $this->assertStringContainsString('CASHCARD-0', $result['html'],
+            'The cash card number is missing from the main payroll form.');
+    }
+
+    /**
+     * An Encoder may print the main form (previous test) but does not hold
+     * `employee.sensitive`, so the cash card number - Tier 2 data - must not
+     * leak into that column. The cell stays blank, as it always has, for a
+     * physical signature instead.
+     */
+    public function testTheMainFormHidesTheCashCardNumberWithoutTheSensitivePermission(): void
+    {
+        $result = $this->render(self::MY_PAYROLL, $this->user(self::ENCODER, 'Encoder'));
+
+        $this->assertArrayHasKey('html', $result, $result['error'] ?? '');
+        $this->assertStringNotContainsString('CASHCARD-0', $result['html'],
+            'An Encoder without employee.sensitive saw the cash card number.');
     }
 
     /* --------------------------------------------------- partial scope */

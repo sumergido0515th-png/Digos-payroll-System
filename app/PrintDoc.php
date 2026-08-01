@@ -294,7 +294,12 @@ function printLine(array $d, float $hoursPerDay): array
  */
 function buildPrintHtml(string $payrollNo, array $user): string
 {
-    $b = printBundle($payrollNo, $user);
+    // Whether the "...Cash Card Number" half of the signature column can be
+    // filled in at all - CashCard lives in EmployeeSensitive (migration 0015),
+    // so a caller without the restricted tier gets the column exactly as
+    // before: blank, for a physical signature or thumbmark.
+    $withSensitive = EmployeeRepo::mayReadSensitive($user);
+    $b = printBundle($payrollNo, $user, $withSensitive);
     $s = $b['s'];
     $pd = $b['period'];
     $h = $b['header'];
@@ -315,6 +320,17 @@ function buildPrintHtml(string $payrollNo, array $user): string
         $l = $lines[$i] ?? null;
         if ($l) {
             foreach ($sum as $k => $v) $sum[$k] = round2($v + $l[$k]);
+
+            // A cash card number on file means this employee is paid onto
+            // that card rather than in hand, so it prints in place of the
+            // signature/thumbmark space - the disbursing officer's cert on
+            // this form ("paid in cash... established his identity...")
+            // otherwise reads as satisfied by a blank cell.
+            $employeeId = (string) ($b['details'][$i]['EmployeeID'] ?? '');
+            $cashCard = $withSensitive
+                ? trim((string) ($b['employees'][$employeeId]['CashCard'] ?? ''))
+                : '';
+
             $rowsHtml .= '<tr>'
                 . '<td class="c">' . ($i + 1) . '</td>'
                 . '<td class="name">' . esc($l['name']) . '</td>'
@@ -330,7 +346,7 @@ function buildPrintHtml(string $payrollNo, array $user): string
                 . '<td class="r">' . ($l['sss'] > 0 ? money($l['sss']) : '') . '</td>'
                 . '<td class="r">' . ($l['bir'] > 0 ? money($l['bir']) : '') . '</td>'
                 . '<td class="r"><b>' . money($l['net']) . '</b></td>'
-                . '<td class="sig"></td></tr>';
+                . '<td class="sig">' . esc($cashCard) . '</td></tr>';
         } else {
             $rowsHtml .= '<tr class="blank"><td class="c">' . ($i + 1) . '</td>'
                 . str_repeat('<td></td>', 13) . '<td class="sig"></td></tr>';
