@@ -2,7 +2,7 @@
 /**
  * ============================================================================
  * Helpers.php - Shared helpers: envelopes, validation, formatting,
- * identifiers and amount-in-words. Mirrors src/Utilities.gs.
+ * identifiers and amount-in-words.
  * ============================================================================
  */
 
@@ -106,6 +106,25 @@ function requireFields(array $p, array $fields): void
 }
 
 /**
+ * Payload keys never written to the audit log, whatever action carries them.
+ *
+ * `Password` is sent twice in this codebase: apiApprovePayroll's
+ * re-authentication step, and apiSaveUser's password change. Both actions are
+ * logged (APPROVE_PAYROLL, SAVE_USER), so both left the caller's plaintext
+ * password sitting in Logs.Details - a table `log.view` lets several roles
+ * read - until this list existed. A named allowlist rather than a fuzzy
+ * "looks like a secret" check, so what is redacted is a decision on record
+ * rather than a guess: the next field that needs this belongs here, stated,
+ * not inferred from a pattern that might miss it or over-match something
+ * that was never a secret.
+ *
+ * Matched at the top level of the payload only. No route nests a secret
+ * inside an array field today; if one ever does, this is the boundary it
+ * would cross, and recursion is not here because that case does not exist.
+ */
+const SENSITIVE_PAYLOAD_KEYS = ['Password'];
+
+/**
  * A payload reduced to what belongs in the audit log.
  *
  * An uploaded image arrives as an inline data: URL, and the log stores the
@@ -115,7 +134,9 @@ function requireFields(array $p, array $fields): void
 function auditSummary(array $payload): array
 {
     foreach ($payload as $key => $value) {
-        if (is_string($value) && str_starts_with($value, 'data:')) {
+        if (in_array($key, SENSITIVE_PAYLOAD_KEYS, true)) {
+            $payload[$key] = '<redacted>';
+        } elseif (is_string($value) && str_starts_with($value, 'data:')) {
             $payload[$key] = '<inline data, ' . strlen($value) . ' bytes>';
         }
     }
