@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 8.1 is the floor stated in README-PHP.md; 8.2 is what the XAMPP
+        # 8.1 is the floor stated in README.md; 8.2 is what the XAMPP
         # deployment actually runs.
         php: ["8.1", "8.2"]
         # mariadb:10.4 is what the deployment runs today (XAMPP ships it, and

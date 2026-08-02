@@ -95,7 +95,15 @@ function emitSql(string $target): int
     fwrite($out, "-- EMPTY database; it is not safe to re-run over existing data.\n");
     fwrite($out, "--\n");
     fwrite($out, "-- No CREATE DATABASE or USE statement: shared hosts name the database\n");
-    fwrite($out, "-- for you, and phpMyAdmin imports into whichever one is selected.\n\n");
+    fwrite($out, "-- for you, and phpMyAdmin imports into whichever one is selected.\n");
+    fwrite($out, "--\n");
+    fwrite($out, "-- Which means the database has to be selected. Click it in the left\n");
+    fwrite($out, "-- sidebar before opening the SQL or Import tab; run this from the\n");
+    fwrite($out, "-- server home page instead and the first statement below fails with\n");
+    fwrite($out, "-- #1046 \"No database selected\". If your host's phpMyAdmin gives you no\n");
+    fwrite($out, "-- way to select one, uncomment the next line and fill in its name:\n");
+    fwrite($out, "--\n");
+    fwrite($out, "-- USE `your_database_name`;\n\n");
 
     fwrite($out, "SET SESSION sql_mode = '" . DB_SQL_MODE . "';\n\n");
 

@@ -11,7 +11,7 @@
  *
  * The graph itself, the approval guard and the suspension split live in the
  * pure Digos\Domain\Workflow\PayrollWorkflow; this file loads what that class
- * needs and persists what it decides. Mirrors src/Payroll.gs.
+ * needs and persists what it decides.
  * ============================================================================
  */
 
@@ -121,7 +121,7 @@ function computationConfig(): array
 }
 
 /**
- * Computes one payroll line (same formula as the Apps Script version):
+ * Computes one payroll line:
  * earnings - time cuts = gross; gross - (tax + CA + other) = net.
  */
 function computeLine(array $emp, array $line, array $cfg): array

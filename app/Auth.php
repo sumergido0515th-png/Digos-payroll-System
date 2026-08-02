@@ -2,8 +2,7 @@
 /**
  * ============================================================================
  * Auth.php - Email/password authentication, role-based access control,
- * session timeout and the audit-trail writer. Mirrors src/Auth.gs, with
- * Google sign-in replaced by PHP sessions + bcrypt passwords.
+ * session timeout and the audit-trail writer. PHP sessions + bcrypt passwords.
  * ============================================================================
  */
 

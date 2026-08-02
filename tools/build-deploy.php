@@ -40,6 +40,8 @@ if (PHP_SAPI !== 'cli') {
 
 require_once dirname(__DIR__) . '/vendor/autoload.php';
 
+use Digos\Domain\Migration\StatementSplitter;
+
 const PROJECT = __DIR__ . '/..';
 
 /** Directories copied wholesale into the package. */
@@ -120,21 +122,22 @@ function build(string $out): int
  * twenty foreign keys the order matters. This does it in one paste. It is a
  * separate file, never referenced by the import, because it destroys data and
  * that has to stay a deliberate act.
+ *
+ * The drops are ordered children-before-parents rather than alphabetically.
+ * SET FOREIGN_KEY_CHECKS = 0 is still emitted, but it cannot be relied on
+ * alone: it is a session variable, and a host that does not carry the session
+ * across every statement of the paste leaves the constraints live, at which
+ * point `Employees` - referenced by nine tables and early in the alphabet -
+ * fails with #1451 and the database is left half-emptied. Ordering makes the
+ * script correct with the checks either way.
  */
 function writeResetScript(): string
 {
     $path = PROJECT . '/dist/deploy-reset.sql';
-    $tables = [];
 
-    foreach (glob(PROJECT . '/migrations/*.sql') ?: [] as $file) {
-        $sql = preg_replace('/^\s*--.*$/m', '', (string) file_get_contents($file));
-        if (preg_match_all('/CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+`?(\w+)`?/i', $sql, $m)) {
-            foreach ($m[1] as $t) $tables[$t] = true;
-        }
-    }
+    [$tables, $edges] = readSchemaGraph();
     $tables['schema_migrations'] = true;      // created by migrate.php, not a migration
-    $names = array_keys($tables);
-    sort($names);
+    [$names, $breaks] = dropOrder($tables, $edges);
 
     $body = "-- Digos Payroll - reset a database before importing deploy-schema.sql\n"
         . '-- Generated ' . date('Y-m-d H:i') . " by tools/build-deploy.php\n"
@@ -143,9 +146,23 @@ function writeResetScript(): string
         . "-- import has failed partway and you are starting that import again.\n"
         . "-- Take a backup first if the database holds anything you want.\n"
         . "--\n"
-        . "-- phpMyAdmin -> select the database -> SQL -> paste -> Go, then import\n"
-        . "-- deploy-schema.sql into the now-empty database.\n\n"
+        . "-- phpMyAdmin -> click your database in the left sidebar (not the\n"
+        . "-- server home page) -> SQL -> paste this whole file -> Go. Then\n"
+        . "-- import deploy-schema.sql into the now-empty database.\n"
+        . "--\n"
+        . "-- #1046 \"No database selected\" means the SQL tab was opened at the\n"
+        . "-- server rather than inside a database. Open the database first, or\n"
+        . "-- uncomment the next line and fill in its name:\n"
+        . "--\n"
+        . "-- USE `your_database_name`;\n"
+        . "--\n"
+        . "-- The DROP order below is children-before-parents, so the script is\n"
+        . "-- correct even where the FOREIGN_KEY_CHECKS setting does not hold for\n"
+        . "-- every statement. Without that order the parent tables fail with\n"
+        . "-- #1451 and the reset stops halfway.\n\n"
         . "SET FOREIGN_KEY_CHECKS = 0;\n\n";
+
+    foreach ($breaks as [$child, $parent]) $body .= breakReference($child, $parent);
 
     foreach ($names as $t) $body .= "DROP TABLE IF EXISTS `$t`;\n";
 
@@ -155,6 +172,142 @@ function writeResetScript(): string
     say(sprintf('  deploy-reset.sql  written (%d tables)', count($names)));
 
     return $path;
+}
+
+/**
+ * SQL that drops the foreign key from $child to $parent, if it is there.
+ *
+ * Written against information_schema rather than as a plain ALTER TABLE for
+ * two reasons. A bare `ALTER TABLE x DROP FOREIGN KEY y` fails outright when
+ * the table or the constraint is absent, and a database left half-built by a
+ * failed import - the only situation this script exists for - is exactly where
+ * that happens; MariaDB 10.4 has no `ALTER TABLE IF EXISTS` to fall back on.
+ * And looking the name up by which table it points at, rather than hardcoding
+ * it, keeps this correct if a migration ever renames the constraint.
+ *
+ * `DO 0` is the do-nothing statement executed when there is no such reference.
+ */
+function breakReference(string $child, string $parent): string
+{
+    return "-- `$child` and `$parent` reference each other; no drop order works\n"
+        . "-- for the pair, so one side of the cycle goes first.\n"
+        . "SET @stmt := IFNULL((\n"
+        . "    SELECT CONCAT('ALTER TABLE `$child` DROP FOREIGN KEY `', CONSTRAINT_NAME, '`')\n"
+        . "      FROM information_schema.REFERENTIAL_CONSTRAINTS\n"
+        . "     WHERE CONSTRAINT_SCHEMA = DATABASE()\n"
+        . "       AND TABLE_NAME = '$child'\n"
+        . "       AND REFERENCED_TABLE_NAME = '$parent'\n"
+        . "     LIMIT 1), 'DO 0');\n"
+        . "PREPARE stmt FROM @stmt;\n"
+        . "EXECUTE stmt;\n"
+        . "DEALLOCATE PREPARE stmt;\n\n";
+}
+
+/**
+ * Reads the migrations and returns [tables, edges]: every table the schema
+ * creates, and for each one the tables its foreign keys point at.
+ *
+ * Both forms matter - 0005 and 0016 declare constraints inside CREATE TABLE,
+ * 0009 adds them afterwards with ALTER TABLE - so the statement is classified
+ * first and every REFERENCES in it is attributed to that table.
+ *
+ * @return array{0: array<string,true>, 1: array<string,array<string,true>>}
+ */
+function readSchemaGraph(): array
+{
+    $tables = [];
+    $edges = [];
+
+    foreach (glob(PROJECT . '/migrations/*.sql') ?: [] as $file) {
+        foreach (StatementSplitter::split((string) file_get_contents($file)) as $statement) {
+            if (!preg_match(
+                '/^(CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?/i',
+                $statement, $m)) {
+                continue;
+            }
+
+            $table = $m[2];
+            if (strcasecmp($m[1], 'CREATE') === 0) $tables[$table] = true;
+
+            if (preg_match_all('/REFERENCES\s+`?(\w+)`?/i', $statement, $refs)) {
+                foreach ($refs[1] as $parent) {
+                    // A self-reference (Memorandum.SupersedesID, WorkShifts)
+                    // constrains nothing about drop order.
+                    if (strcasecmp($parent, $table) !== 0) $edges[$table][$parent] = true;
+                }
+            }
+        }
+    }
+
+    return [$tables, $edges];
+}
+
+/**
+ * Orders tables so that a table is only dropped once everything referencing it
+ * is gone. Ties are broken alphabetically to keep the generated file stable
+ * between builds.
+ *
+ * `Offices` and `Functions` reference each other - an office has a function,
+ * a function has an owning office - so for that pair no order exists at all.
+ * The second return value lists the references that have to be dropped before
+ * the tables can be, as [child, parent] pairs.
+ *
+ * @param array<string,true>                 $tables
+ * @param array<string,array<string,true>>   $edges  child => [parent => true]
+ * @return array{0: string[], 1: array<array{0: string, 1: string}>}
+ */
+function dropOrder(array $tables, array $edges): array
+{
+    $remaining = array_keys($tables);
+    sort($remaining);
+
+    $order = [];
+    $breaks = [];
+
+    while ($remaining) {
+        $ready = [];
+        foreach ($remaining as $table) {
+            $referenced = false;
+            foreach ($remaining as $other) {
+                if ($other !== $table && isset($edges[$other][$table])) {
+                    $referenced = true;
+                    break;
+                }
+            }
+            if (!$referenced) $ready[] = $table;
+        }
+
+        if ($ready) {
+            foreach ($ready as $table) $order[] = $table;
+            $remaining = array_values(array_diff($remaining, $ready));
+            continue;
+        }
+
+        // Nothing is droppable, so everything left is in a reference cycle.
+        // Cut every reference that stays inside the set: the next pass then
+        // finds the whole remainder ready. Cutting more than the minimum is
+        // deliberate - the tables are about to be dropped anyway, and it
+        // avoids having to decide which single reference to sacrifice.
+        $cut = 0;
+        foreach ($remaining as $child) {
+            foreach (array_keys($edges[$child] ?? []) as $parent) {
+                if (in_array($parent, $remaining, true)) {
+                    $breaks[] = [$child, $parent];
+                    unset($edges[$child][$parent]);
+                    $cut++;
+                }
+            }
+        }
+
+        // No reference stayed inside the set, so the cycle is not one this
+        // can cut. Emit the rest and leave it to FOREIGN_KEY_CHECKS = 0.
+        if ($cut === 0) {
+            foreach ($remaining as $table) $order[] = $table;
+            break;
+        }
+    }
+
+    return [$order, $breaks];
 }
 
 /**

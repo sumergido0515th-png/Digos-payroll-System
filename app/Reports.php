@@ -3,7 +3,6 @@
  * ============================================================================
  * Reports.php - Dashboard aggregation and the 10-report engine.
  * Uniform report shape: {title, columns, rows, totals, filters, generatedAt}.
- * Mirrors src/Reports.gs + the dashboard endpoint from src/Code.gs.
  * ============================================================================
  */
 

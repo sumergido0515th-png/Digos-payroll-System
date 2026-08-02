@@ -1,8 +1,7 @@
 <?php
 /**
  * index.php - SPA shell. Requires a signed-in session (redirects to
- * login.php otherwise); the page then boots via apiGetSession like the
- * Apps Script version.
+ * login.php otherwise); the page then boots via apiGetSession.
  */
 
 declare(strict_types=1);

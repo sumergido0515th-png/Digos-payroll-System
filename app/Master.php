@@ -2,7 +2,7 @@
 /**
  * ============================================================================
  * Master.php - Master data: Employees, Offices, Departments, Functions,
- * Timekeepers and the combined lookups endpoint. Mirrors src/Employee.gs.
+ * Timekeepers and the combined lookups endpoint.
  * ============================================================================
  */
 

@@ -11,7 +11,8 @@ composer.phar
 /.phpunit.cache/
 /.phpunit.result.cache
 
-# Local environment overrides (app/config.php holds real credentials)
+# Real credentials. app/config.php is tracked and holds only XAMPP defaults;
+# anything secret belongs here, which is why this file never enters the repo.
 /app/config.local.php
 
 # Editors / OS
