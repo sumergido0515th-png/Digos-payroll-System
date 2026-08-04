@@ -52,6 +52,7 @@ if (empty($_SESSION['email'])) {
       <a class="nav-item-link" data-page="periods" data-perm="period.view"><span class="material-icons">date_range</span>Payroll Period</a>
       <a class="nav-item-link" data-page="reports" data-perm="report.view"><span class="material-icons">summarize</span>Payroll Reports</a>
       <a class="nav-item-link" data-page="print" data-perm="print.run"><span class="material-icons">print</span>Print Payroll</a>
+      <a class="nav-item-link" data-page="import" data-perm="data.import"><span class="material-icons">upload_file</span>Import Data</a>
       <a class="nav-item-link" data-page="users" data-perm="user.manage"><span class="material-icons">manage_accounts</span>Users</a>
       <a class="nav-item-link" data-page="logs" data-perm="log.view"><span class="material-icons">history</span>Audit Logs</a>
       <a class="nav-item-link" data-page="settings" data-perm="settings.edit"><span class="material-icons">settings</span>Settings</a>

@@ -47,6 +47,12 @@ const PERMISSIONS = [
         'calendar.view', 'calendar.edit',
         'attachment.view', 'attachment.edit',
         'report.view', 'print.run',
+        // Bulk master-data import. Held here and nowhere else below, because
+        // the records it loads - employees, offices, timekeepers - are the ones
+        // this role already owns one at a time. It widens no scope: the
+        // importer checks the target permission as well, so this grants
+        // nothing HRMO could not already type into a form.
+        'data.import',
     ],
 
     // Prepares and submits; never approves. The segregation of duties this

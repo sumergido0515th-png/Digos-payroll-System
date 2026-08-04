@@ -177,7 +177,7 @@ var PAGE_TITLES = {
   timekeepers: 'Timekeepers', departments: 'Departments & Offices',
   periods: 'Payroll Period', reports: 'Payroll Reports', print: 'Print Payroll',
   users: 'User Management', logs: 'Audit Logs', settings: 'Settings',
-  backup: 'Backup & Restore'
+  import: 'Import Data', backup: 'Backup & Restore'
 };
 
 /**

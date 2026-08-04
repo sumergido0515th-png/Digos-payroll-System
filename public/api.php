@@ -143,6 +143,14 @@ const ROUTES = [
     'apiSaveScopeGrant' => ['scope.manage', 'ScopeGrants', 'SAVE_SCOPE_GRANT'],
     'apiDeleteScopeGrant' => ['scope.manage', 'ScopeGrants', 'DELETE_SCOPE_GRANT'],
 
+    // Bulk master-data import. 'data.import' reaches the screen; each entity's
+    // own permission is checked again inside, so importing employees still
+    // needs 'employee.edit'. Preview writes nothing and is therefore unlogged;
+    // the commit records the attempt here and its outcome from inside.
+    'apiGetImportTypes' => ['data.import', 'Import', ''],
+    'apiPreviewImport' => ['data.import', 'Import', ''],
+    'apiCommitImport' => ['data.import', 'Import', 'IMPORT_DATA'],
+
     // Settings & backup
     'apiGetSettings' => ['settings.view', 'Settings', ''],
     'apiSaveSettings' => ['settings.edit', 'Settings', 'SAVE_SETTINGS'],

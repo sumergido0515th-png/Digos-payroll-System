@@ -404,6 +404,15 @@ function apiSaveTimekeeper(array $p, array $user): array
         'Status' => $p['Status'] ?? 'Active',
     ];
     if (!empty($p['TimekeeperID'])) {
+        // Checked rather than updated blind. An UPDATE against an id that is
+        // not there matches no rows and raises nothing, so this reported
+        // 'updated' => true having written precisely nothing - invisible from
+        // the SPA, which only ever sends an id it was given, and a silent no-op
+        // for a bulk import, which is where a wrong id actually arrives.
+        // apiSaveEmployee and apiSavePeriod both check first; this did not.
+        if (!DB::row('SELECT TimekeeperID FROM Timekeepers WHERE TimekeeperID = ?', [$p['TimekeeperID']])) {
+            throw new RuntimeException('Timekeeper not found: ' . $p['TimekeeperID']);
+        }
         DB::update('Timekeepers', $record, 'TimekeeperID', $p['TimekeeperID']);
         return ['updated' => true, 'TimekeeperID' => $p['TimekeeperID']];
     }
