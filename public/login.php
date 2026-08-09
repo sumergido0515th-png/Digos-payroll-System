@@ -32,6 +32,7 @@ $logo = '';
 $watermark = '';
 $watermarkOpacity = 0.20;
 $bgPhoto = '';
+$governmentEmail = '';
 $headline = 'The City of Choice';
 $tagline = 'To live, work, and visit | Hugpong Digoseños';
 try {
@@ -40,6 +41,7 @@ try {
     $watermark = getSetting('WatermarkUrl', '');
     $watermarkOpacity = watermarkOpacity();
     $bgPhoto = getSetting('LoginBackgroundUrl', '');
+    $governmentEmail = getSetting('GovernmentEmail', '');
     $headline = getSetting('LoginHeadline', $headline);
     $tagline = getSetting('LoginTagline', $tagline);
 } catch (Throwable) { /* DB not ready yet */ }
@@ -412,8 +414,8 @@ $taglineAccent = $taglineBits[1] ?? '';
         </div>
         <div class="alert alert-secondary py-2 small" id="forgot-note">
           Password resets aren't self-service yet &mdash; contact your system administrator
-          <?php if (($email = getSetting('GovernmentEmail', '')) !== ''): ?>
-            at <a href="mailto:<?= htmlspecialchars($email) ?>"><?= htmlspecialchars($email) ?></a>.
+          <?php if ($governmentEmail !== ''): ?>
+            at <a href="mailto:<?= htmlspecialchars($governmentEmail) ?>"><?= htmlspecialchars($governmentEmail) ?></a>.
           <?php else: ?>.<?php endif; ?>
         </div>
         <button class="btn btn-gov-grad w-100 py-2">Sign in <span class="material-icons">arrow_forward</span></button>
