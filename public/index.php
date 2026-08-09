@@ -40,30 +40,43 @@ if (empty($_SESSION['email'])) {
       <small>Employee Payroll Management System<br>Job Order &bull; Contract of Service</small>
     </div>
     <nav id="nav-menu">
+      <div class="nav-section-label">Overview</div>
       <a class="nav-item-link" data-page="dashboard" data-perm="dashboard.view"><span class="material-icons">dashboard</span>Dashboard</a>
-      <a class="nav-item-link" data-page="employees" data-perm="employee.view"><span class="material-icons">badge</span>Employees</a>
+
+      <div class="nav-section-label">Payroll</div>
       <a class="nav-item-link" data-page="payroll" data-perm="payroll.view"><span class="material-icons">request_quote</span>Payroll Transactions</a>
       <a class="nav-item-link" data-page="dtr" data-perm="dtr.view"><span class="material-icons">event_note</span>Daily Time Records</a>
       <a class="nav-item-link" data-page="preaudit" data-perm="payroll.approve"><span class="material-icons">fact_check</span>Pre-Audit Worklist</a>
-      <a class="nav-item-link" data-page="documents" data-perm="document.view"><span class="material-icons">description</span>Authority Documents</a>
-      <a class="nav-item-link" data-page="coverage" data-perm="attachment.view"><span class="material-icons">fact_check</span>Coverage &amp; Attachments</a>
-      <a class="nav-item-link" data-page="timekeepers" data-perm="timekeeper.view"><span class="material-icons">schedule</span>Timekeepers</a>
-      <a class="nav-item-link" data-page="departments" data-perm="office.view"><span class="material-icons">apartment</span>Departments &amp; Offices</a>
       <a class="nav-item-link" data-page="periods" data-perm="period.view"><span class="material-icons">date_range</span>Payroll Period</a>
       <a class="nav-item-link" data-page="reports" data-perm="report.view"><span class="material-icons">summarize</span>Payroll Reports</a>
       <a class="nav-item-link" data-page="print" data-perm="print.run"><span class="material-icons">print</span>Print Payroll</a>
+
+      <div class="nav-section-label">People &amp; Records</div>
+      <a class="nav-item-link" data-page="employees" data-perm="employee.view"><span class="material-icons">badge</span>Employees</a>
+      <a class="nav-item-link" data-page="timekeepers" data-perm="timekeeper.view"><span class="material-icons">schedule</span>Timekeepers</a>
+      <a class="nav-item-link" data-page="departments" data-perm="office.view"><span class="material-icons">apartment</span>Departments &amp; Offices</a>
+      <a class="nav-item-link" data-page="documents" data-perm="document.view"><span class="material-icons">description</span>Authority Documents</a>
+      <a class="nav-item-link" data-page="coverage" data-perm="attachment.view"><span class="material-icons">fact_check</span>Coverage &amp; Attachments</a>
+
+      <div class="nav-section-label">Administration</div>
       <a class="nav-item-link" data-page="import" data-perm="data.import"><span class="material-icons">upload_file</span>Import Data</a>
       <a class="nav-item-link" data-page="users" data-perm="user.manage"><span class="material-icons">manage_accounts</span>Users</a>
       <a class="nav-item-link" data-page="logs" data-perm="log.view"><span class="material-icons">history</span>Audit Logs</a>
       <a class="nav-item-link" data-page="settings" data-perm="settings.edit"><span class="material-icons">settings</span>Settings</a>
       <a class="nav-item-link" data-page="backup" data-perm="backup.run"><span class="material-icons">cloud_sync</span>Backup &amp; Restore</a>
-      <a class="nav-item-link" id="btn-logout"><span class="material-icons">logout</span>Logout</a>
     </nav>
     <div class="user-box">
-      <div id="user-name" class="fw-semibold">&hellip;</div>
-      <div class="d-flex justify-content-between align-items-center mt-1">
-        <span id="user-email" class="opacity-75"></span>
-        <span id="user-role" class="role-badge"></span>
+      <div class="d-flex align-items-center justify-content-between gap-2">
+        <div class="flex-grow-1 min-w-0">
+          <div id="user-name" class="fw-semibold text-truncate">&hellip;</div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span id="user-email" class="opacity-75 text-truncate"></span>
+            <span id="user-role" class="role-badge flex-shrink-0"></span>
+          </div>
+        </div>
+        <button class="btn-icon-logout flex-shrink-0" id="btn-logout" title="Sign out" aria-label="Sign out">
+          <span class="material-icons">logout</span>
+        </button>
       </div>
     </div>
   </aside>

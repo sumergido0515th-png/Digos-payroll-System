@@ -189,7 +189,12 @@ var WATERMARK_PAGES = ['dashboard'];
 
 /**
  * Applies the uploaded branding to the shell: the logo into the sidebar seal,
- * the watermark into its layer.
+ * and the one uploaded watermark photo into every surface that echoes it -
+ * the watermark layer itself, a faint wash at the foot of the sidebar, and
+ * the dashboard's hero banner. All three read the same custom property
+ * pattern (app.css applies each surface's own opacity/fade) so one upload
+ * lights up everywhere consistently instead of needing a separate asset per
+ * surface.
  *
  * Both settings are optional and default to empty, so an installation that
  * has uploaded neither keeps the placeholder icon and a plain background.
@@ -205,13 +210,23 @@ function applyBranding(settings) {
     seal.innerHTML = '<img src="' + esc(settings.logoUrl) + '" alt="Office logo">';
   }
 
-  var mark = document.getElementById('watermark');
-  mark.style.backgroundImage =
-    settings.watermarkUrl ? 'url("' + encodeURI(settings.watermarkUrl) + '")' : '';
+  var url = settings.watermarkUrl ? 'url("' + encodeURI(settings.watermarkUrl) + '")' : 'none';
+
+  document.getElementById('watermark').style.setProperty('--watermark-url', url);
   // The server clamps this to a range that keeps page text readable; the
   // fallback matches WatermarkOpacity's seeded default.
   document.body.style.setProperty('--watermark-opacity',
     String(settings.watermarkOpacity || 0.2));
+
+  var sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('has-photo', !!settings.watermarkUrl);
+  sidebar.style.setProperty('--sidebar-photo-url', url);
+
+  var hero = document.getElementById('dash-hero');
+  if (hero) {
+    hero.classList.toggle('has-photo', !!settings.watermarkUrl);
+    hero.style.setProperty('--dash-photo-url', url);
+  }
 }
 
 /** Activates a page and runs its module's init(). */
@@ -303,6 +318,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.innerWidth <= 992) document.body.classList.toggle('sidebar-open');
     else document.body.classList.toggle('sidebar-hidden');
   };
+
+  // A few pixels of parallax on the watermark photo as the pointer moves -
+  // only while it is actually showing, and never for a user who has asked
+  // the OS for less motion.
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var mark = document.getElementById('watermark');
+    document.getElementById('main').addEventListener('mousemove', function (e) {
+      if (!document.body.classList.contains('watermark-on')) return;
+      var x = (e.clientX / window.innerWidth - 0.5) * 16;
+      var y = (e.clientY / window.innerHeight - 0.5) * 12;
+      mark.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
+    });
+  }
 
   // Sidebar navigation.
   document.querySelectorAll('.nav-item-link[data-page]').forEach(function (a) {

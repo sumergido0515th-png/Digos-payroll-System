@@ -9,6 +9,7 @@
   --gov-accent: #f4b400;
   --bg: #f4f6fa;
   --card: #ffffff;
+  --card-rgb: 255, 255, 255;
   --text: #1f2937;
   --muted: #6b7280;
   --border: #e5e7eb;
@@ -20,6 +21,7 @@
   --gov-blue-light: #17264a;
   --bg: #0f1523;
   --card: #182136;
+  --card-rgb: 24, 33, 54;
   --text: #e5e9f2;
   --muted: #9aa4b8;
   --border: #2a3552;
@@ -42,6 +44,21 @@ body {
   z-index: 1040;
   display: flex; flex-direction: column;
   transition: transform .25s ease;
+  overflow: hidden;
+}
+/* An uploaded watermark photo echoed faintly at the foot of the rail, so the
+   sidebar reads as the same material as the hero photo behind the dashboard
+   rather than a flat panel bolted on next to it - plain opacity, not a color
+   blend (see the note on #watermark for why "natural" won over duotone).
+   z-index:-1 keeps it under the nav links and the brand seal, which are
+   normal-flow content. */
+#sidebar.has-photo::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--sidebar-photo-url, none);
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 160%;
+  opacity: .14;
 }
 #sidebar .brand {
   padding: 18px 16px 14px;
@@ -72,14 +89,31 @@ body {
   border-left-color: var(--gov-accent); font-weight: 600;
 }
 .nav-item-link .material-icons { font-size: 19px; }
+/* Section labels group 17 links into scannable clusters rather than one long
+   flat list - the grouping (Overview / Payroll / People & Records /
+   Administration) mirrors how the modules actually relate to each other. */
+.nav-section-label {
+  padding: 14px 18px 4px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px;
+  color: rgba(255,255,255,.4);
+}
+.nav-section-label:first-child { padding-top: 4px; }
 #sidebar .user-box {
   padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.15);
-  font-size: 12px;
+  font-size: 12px; position: relative; z-index: 1;
 }
 #sidebar .user-box .role-badge {
   background: var(--gov-accent); color: #3a2c00;
   font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
 }
+.btn-icon-logout {
+  border: none; background: var(--gov-blue-dark); color: #fff;
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.btn-icon-logout:hover { background: var(--gov-blue); }
+.btn-icon-logout .material-icons { font-size: 18px; }
 
 #main {
   flex: 1; margin-left: var(--sidebar-w);
@@ -132,32 +166,29 @@ body {
  * bounds the layer itself for the same reason.
  */
 #watermark {
-  /* Inset from the content area rather than filling it, so the seal has a
+  /* Inset from the content area rather than filling it, so the image has a
      margin instead of running into the topbar and the window edges. */
   position: fixed; inset: 76px 4vw 4vh calc(var(--sidebar-w) + 4vw);
   background-repeat: no-repeat;
   background-position: center;
-  /* contain, so the seal is as large as its placement allows whatever shape it
-     is: a square crest ends up limited by height, a wide one by width, and
-     neither is cropped or stretched. */
+  /* contain, so the image is as large as its placement allows whatever shape
+     it is: a square crest ends up limited by height, a wide photo by width,
+     and neither is cropped or stretched. */
   background-size: contain;
-  opacity: 0; transition: opacity .25s ease;
+  opacity: 0; transition: opacity .4s ease, transform .2s ease-out;
   pointer-events: none; z-index: 0;
-  /* A seal exported for print is normally dark ink on a solid white
-     background, not a transparent PNG. Multiply drops that white out - white
-     times the backdrop is the backdrop - and darkens only where the crest is,
-     so the page shows a seal rather than the pale box the image came in. A
-     transparent PNG gives the same result, its empty pixels being no-ops. */
-  mix-blend-mode: multiply;
+  /* "Natural" rather than duotone (compared against a color-blend duotone in
+     the preview and chosen over it): the uploaded photo already sits in the
+     same blue-and-white range as the shell around it, so recoloring it just
+     muted its own gradient without adding anything - the plain image at a
+     slightly higher opacity than before reads more clearly. A future upload
+     in a clashing color would still be legible; it just would not be as
+     seamless as this one. */
+  background-image: var(--watermark-url, none);
 }
-body.watermark-on #watermark { opacity: var(--watermark-opacity, .2); }
+body.watermark-on #watermark { opacity: var(--watermark-opacity, .3); }
 /* Sidebar collapsed: keep the margin, drop only its width. */
 body.sidebar-hidden #watermark { left: 4vw; }
-
-/* Dark mode needs the opposite: the page behind is near-black, so darkening it
-   further shows nothing. Inverting turns the white background black and the
-   crest light, and screen then drops the black and keeps the light crest. */
-[data-theme="dark"] #watermark { filter: invert(1); mix-blend-mode: screen; }
 
 /* Collapsed / mobile sidebar */
 body.sidebar-hidden #sidebar { transform: translateX(-100%); }
@@ -239,13 +270,30 @@ body.sidebar-hidden #main { margin-left: 0; }
 }
 .spinner-overlay.show { display: flex; }
 #toast-host { position: fixed; right: 18px; bottom: 18px; z-index: 2100; }
-.modal-content { background: var(--card); color: var(--text); border-radius: 14px; }
+/* Glass rather than solid: the dashboard behind a modal (its stat cards, its
+   watermark) stays faintly legible through the blur, so opening a form does
+   not feel like switching to a different screen. The blur is what keeps this
+   accessible regardless of what is behind it - even a busy table dissolves
+   into a soft wash at 20px, so text contrast never depends on the page
+   underneath. --card-rgb exists solely so this alpha channel is possible;
+   --card itself stays a plain hex for every other opaque surface. */
+.modal-content {
+  background: rgba(var(--card-rgb), .84);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  color: var(--text); border-radius: 14px;
+  border: 1px solid rgba(var(--card-rgb), .5);
+  box-shadow: 0 24px 60px rgba(4,14,32,.28);
+}
 .modal-header { border-color: var(--border); }
 .modal-footer { border-color: var(--border); }
+/* Lighter than Bootstrap's default .5 - the page behind should read as the
+   same dashboard, not vanish under a flat scrim, while the modal's own blur
+   still does the accessibility work of keeping its text readable. */
+.modal-backdrop { --bs-backdrop-opacity: .32; }
 .chart-box { min-height: 260px; }
 .cursor-pointer { cursor: pointer; }
 .text-money { text-align: right; font-variant-numeric: tabular-nums; }
-
 
 /* ---- import: sky hero + stepper -----------------------------------------
    The four-stage flow (choose a file, map its columns, review the rows,
@@ -346,4 +394,38 @@ body.sidebar-hidden #main { margin-left: 0; }
 [data-theme="dark"] .imp-confidence.missing { color: #f7a4a4; }
 .import-rows-table tr.row-bad { box-shadow: inset 3px 0 0 #e14848; }
 .import-rows-table tr.row-ok { box-shadow: inset 3px 0 0 #1fa361; }
+
+/* ---- dashboard hero -------------------------------------------------------
+   Where the uploaded watermark photo actually gets to be a photo: the stat
+   cards, charts and the transaction table below stay fully opaque on
+   purpose (see the note on #watermark) because that data has to stay legible
+   no matter what gets uploaded. This banner is the one place on the
+   dashboard built to carry the image at real size instead of as a faint
+   backdrop. */
+.dashboard-hero {
+  position: relative; overflow: hidden; border: none; color: #fff;
+  min-height: 96px;
+  background: linear-gradient(135deg, var(--gov-blue) 0%, var(--gov-blue-dark) 100%);
+}
+[data-theme="dark"] .dashboard-hero {
+  background: linear-gradient(135deg, var(--gov-blue-dark) 0%, #050d1f 100%);
+}
+/* Plain photo, not a color blend - see the note on #watermark. This is the
+   one surface built to carry it at near-full strength; the left-to-right
+   fade below is what keeps the greeting text legible against it. */
+.dashboard-hero.has-photo::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: var(--dash-photo-url, none);
+  background-repeat: no-repeat; background-position: center right;
+  background-size: cover;
+  opacity: .92;
+}
+/* Fades the photo out toward the left edge, where the greeting text sits, so
+   the image never has to compete with what it's sitting behind. */
+.dashboard-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--gov-blue-dark) 0%, rgba(8,44,107,.4) 42%, rgba(8,44,107,.05) 78%);
+}
+.dashboard-hero .card-body { position: relative; z-index: 1; }
+.dashboard-hero #dash-today { color: rgba(255,255,255,.75); }
 

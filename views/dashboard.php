@@ -3,6 +3,16 @@
      ========================================================================== -->
 <section class="page" id="page-dashboard">
 
+  <div class="card dashboard-hero mb-3" id="dash-hero">
+    <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+      <div>
+        <div class="import-kicker">Welcome back</div>
+        <h5 class="mb-0" id="dash-greeting">Loading&hellip;</h5>
+      </div>
+      <div class="small" id="dash-today"></div>
+    </div>
+  </div>
+
   <div class="row g-3" id="dash-cards"></div>
 
   <div class="row g-3 mt-1">
@@ -108,8 +118,20 @@ Pages.dashboard = (function () {
     }).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No payroll transactions yet.</td></tr>';
   }
 
+  /** Greets by time of day and dates the banner - the one part of the page
+      that changes without any data ever loading. */
+  function renderGreeting() {
+    var hour = new Date().getHours();
+    var word = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    var name = (App.session && App.session.fullName) ? ', ' + App.session.fullName.split(' ')[0] : '';
+    document.getElementById('dash-greeting').textContent = word + name + '.';
+    document.getElementById('dash-today').textContent = new Date()
+      .toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
   return {
     init: function () {
+      renderGreeting();
       busy(api('apiGetDashboard')).then(function (d) {
         lastData = d;
         renderCards(d.stats);

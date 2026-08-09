@@ -112,6 +112,7 @@ const IMAGE_SETTINGS = [
     'OfficeLogoUrl' => 'LOGO',
     'PrintLogoUrl' => 'SEAL',
     'WatermarkUrl' => 'MARK',
+    'LoginBackgroundUrl' => 'LOGINBG',
 ];
 
 /** Accepted formats: detected image type => the extension we store it as. */
@@ -128,13 +129,18 @@ const IMAGE_MAX_BYTES = 2097152;
 /**
  * How faint the watermark may be forced to stay, whatever is typed in.
  *
- * The point of the ceiling is readability: past roughly a quarter opacity a
- * seal with any solid area of its own starts competing with the text sitting
- * over it, and the dashboard figures are what people are there to read. The
- * floor stops a value of 0 being mistaken for "the upload did not work".
+ * The point of the ceiling is readability: past this point a seal with any
+ * solid area of its own starts competing with the text sitting over it, and
+ * the dashboard figures are what people are there to read. Raised from .25 to
+ * .32 once the watermark stopped being hard-recolored (see the "natural"
+ * treatment note on #watermark in app.css) - the plain photo needs a touch
+ * more opacity than the old duotone version did to read as clearly. The
+ * dashboard hero banner is a separate, purpose-built surface and is not
+ * bound by this constant. The floor stops a value of 0 being mistaken for
+ * "the upload did not work".
  */
 const WATERMARK_MIN_OPACITY = 0.02;
-const WATERMARK_MAX_OPACITY = 0.25;
+const WATERMARK_MAX_OPACITY = 0.32;
 
 /**
  * Stores an uploaded branding image and points its setting at it.

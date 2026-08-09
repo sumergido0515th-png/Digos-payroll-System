@@ -203,6 +203,12 @@ Pages.settings = (function () {
     ['WatermarkUrl', 'Watermark Background', 'image',
       'Faint seal behind the dashboard and the sign-in page. Leave blank for none.'],
     ['WatermarkOpacity', 'Watermark Opacity (0.02 - 0.25)'],
+    ['LoginBackgroundUrl', 'Sign-in Background Photo', 'image',
+      'Photo behind the sign-in card. Auto-fits any size or aspect ratio without distorting it. Leave blank for the default look.'],
+    ['LoginHeadline', 'Sign-in Headline',
+      'text', 'Shown above the sign-in card. The last word is highlighted.'],
+    ['LoginTagline', 'Sign-in Tagline',
+      'text', 'Shown under the headline. Put "|" where the second half should be highlighted.'],
     ['PayrollPrefix', 'Payroll Number Prefix'],
     ['DefaultTaxRate', 'Default Tax Rate (%)', 'number'],
     ['OvertimeMultiplier', 'Overtime Multiplier', 'number'],
@@ -321,7 +327,8 @@ Pages.settings = (function () {
       }
       return '<div class="col-md-6"><label class="form-label">' + d[1] + '</label>' +
         '<input class="form-control form-control-sm set-field" type="' + (d[2] || 'text') +
-        '" data-key="' + d[0] + '" value="' + esc(v) + '"></div>';
+        '" data-key="' + d[0] + '" value="' + esc(v) + '">' +
+        (d[3] ? '<div class="form-text small">' + esc(d[3]) + '</div>' : '') + '</div>';
     }).join('');
   }
 
