@@ -202,7 +202,7 @@ Pages.settings = (function () {
       'Seal printed on the CAFOA header. Leave blank to print the screen logo.'],
     ['WatermarkUrl', 'Watermark Background', 'image',
       'Faint seal behind the dashboard and the sign-in page. Leave blank for none.'],
-    ['WatermarkOpacity', 'Watermark Opacity (0.02 - 0.25)'],
+    ['WatermarkOpacity', 'Watermark Opacity (0.02 - 0.32)'],
     ['LoginBackgroundUrl', 'Sign-in Background Photo', 'image',
       'Photo behind the sign-in card. Auto-fits any size or aspect ratio without distorting it. Leave blank for the default look.'],
     ['LoginHeadline', 'Sign-in Headline',
