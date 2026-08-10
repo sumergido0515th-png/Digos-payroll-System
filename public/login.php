@@ -181,6 +181,13 @@ $taglineAccent = $taglineBits[1] ?? '';
       background-position: center top, center top;
 <?php endif; ?>
     }
+<?php if ($bgPhoto !== ''): ?>
+    .hero-photo.standby {
+      background-image: url("<?= $bgPhoto ?>");
+      background-blend-mode: normal;
+      background-color: transparent;
+    }
+<?php endif; ?>
     /* Dark at the very top so the headline reads on any photo's own
        brightness there, clear through the middle so the photo shows
        naturally, and a faint blue tint at the bottom to blend the card's
@@ -214,7 +221,17 @@ $taglineAccent = $taglineBits[1] ?? '';
 
     /* ---- header branding -------------------------------------------------- */
     .login-content { position: relative; z-index: 3; width: 100%; max-width: 460px;
-                      display: flex; flex-direction: column; align-items: center; }
+                      display: flex; flex-direction: column; align-items: center;
+                      transition: opacity .35s ease, transform .35s ease, visibility .35s ease; }
+    .login-content.standby { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(18px); }
+    body.standby .login-content { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(18px); }
+    body.standby .deco,
+    body.standby .bird,
+    body.standby .cloud,
+    body.standby .watermark,
+    body.standby .hero-wave-bottom { opacity: 0 !important; pointer-events: none !important; }
+    body.standby .hero-photo::after { opacity: 0 !important; }
+    body.standby .hero-photo { background-color: transparent !important; background-blend-mode: normal !important; }
     .brand-block { text-align: center; margin-bottom: 6px;
                    animation: floatUp .6s ease both; }
     .seal { width: 84px; height: 84px; border-radius: 50%; background: var(--gov-blue, #0b3d91);
@@ -467,10 +484,20 @@ $taglineAccent = $taglineBits[1] ?? '';
   // leaves and nothing is focused - not on a fixed timer, so someone reading
   // slowly with a field still focused never has it recede under them.
   var card = document.querySelector('.login-card');
+  var content = document.querySelector('.login-content');
   var idleTimer;
+  function resetStandbyTimer() {
+    if (content) content.classList.remove('standby');
+    document.body.classList.remove('standby');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (content) content.classList.add('standby');
+      document.body.classList.add('standby');
+    }, 30000);
+  }
   function cardActive() {
     card.classList.add('is-active');
-    clearTimeout(idleTimer);
+    resetStandbyTimer();
   }
   function cardIdleSoon() {
     clearTimeout(idleTimer);
@@ -481,6 +508,10 @@ $taglineAccent = $taglineBits[1] ?? '';
   card.addEventListener('focusin', cardActive);
   card.addEventListener('mouseleave', cardIdleSoon);
   card.addEventListener('focusout', cardIdleSoon);
+  document.addEventListener('mousemove', resetStandbyTimer);
+  document.addEventListener('keydown', resetStandbyTimer);
+  document.addEventListener('touchstart', resetStandbyTimer);
+  resetStandbyTimer();
   cardActive();
 })();
 </script>
