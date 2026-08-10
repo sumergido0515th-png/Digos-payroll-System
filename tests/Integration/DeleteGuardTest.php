@@ -33,6 +33,7 @@ final class DeleteGuardTest extends TestCase
     private const FUNC = 'ZZGUARDF';
     private const PERIOD = 'PRD-ZZGUARD';
     private const PAYROLL = 'ZZG-0001';
+    private const HISTORY_EMPLOYEE = 'EMP-ZZGUARD-HIST';
 
     protected function setUp(): void
     {
@@ -70,11 +71,31 @@ final class DeleteGuardTest extends TestCase
     private function removeFixture(): void
     {
         $db = TestDatabase::connect();
+        $db->prepare('DELETE FROM DtrDays WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
+        $db->prepare('DELETE FROM Contracts WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
+        $db->prepare('DELETE FROM Employees WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
         $db->prepare('DELETE FROM PayrollDetails WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM Payroll WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM PayrollPeriods WHERE PeriodID = ?')->execute([self::PERIOD]);
         $db->prepare('DELETE FROM Offices WHERE OfficeCode = ?')->execute([self::OFFICE]);
         $db->prepare('DELETE FROM Functions WHERE FunctionCode = ?')->execute([self::FUNC]);
+    }
+
+    /** A separate employee with live rate and timekeeping history. */
+    private function createHistoryEmployeeFixture(): void
+    {
+        $db = TestDatabase::connect();
+        $db->prepare('INSERT INTO Employees (EmployeeID, LastName, FirstName, OfficeCode,
+                                             EmploymentType, EmploymentTypeCode, Position, Status)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([self::HISTORY_EMPLOYEE, 'Guard', 'History', self::OFFICE,
+                'Job Order', 'JO', 'Clerk', 'Active']);
+        $db->prepare('INSERT INTO Contracts (ContractID, EmployeeID, RateBasis, Rate, StartDate, Status)
+                      VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute(['CNT-ZZGUARD-001', self::HISTORY_EMPLOYEE, 'Daily', 500.00, '2026-07-01', 'Active']);
+        $db->prepare('INSERT INTO DtrDays (DtrDayID, EmployeeID, WorkDate, PeriodID, HoursWorked, Source)
+                      VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute(['DTR-ZZGUARD-001', self::HISTORY_EMPLOYEE, '2026-07-01', self::PERIOD, 8.00, 'Manual']);
     }
 
     public function testDeletingAnOfficeWithPayrollHistoryIsRefusedInPlainWords(): void
@@ -90,6 +111,24 @@ final class DeleteGuardTest extends TestCase
 
         $this->assertSame(1, $this->rowCount('SELECT COUNT(*) FROM Offices WHERE OfficeCode = ?', self::OFFICE),
             'The office was deleted despite the guard.');
+    }
+
+    public function testDeletingAnEmployeeWithContractsOrDtrHistoryIsRefused(): void
+    {
+        $this->createHistoryEmployeeFixture();
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteEmployee([
+            'EmployeeID' => self::HISTORY_EMPLOYEE,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting an employee with contracts and DTR history should have been refused.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('contract', $message);
+        $this->assertStringContainsString('history', $message);
+
+        $this->assertSame(1, $this->rowCount('SELECT COUNT(*) FROM Employees WHERE EmployeeID = ?', self::HISTORY_EMPLOYEE),
+            'The employee was deleted despite having history.');
     }
 
     public function testDeletingAFunctionChargedByAPayrollIsRefused(): void
@@ -149,6 +188,19 @@ final class DeleteGuardTest extends TestCase
 
         $this->assertSame(0, $this->rowCount('SELECT COUNT(*) FROM Offices WHERE OfficeCode = ?', self::OFFICE),
             'The guard blocks a delete that nothing references.');
+    }
+
+    public function testTheHistoryEmployeeCanBeCleanedUpOnceItsHistoryIsRemoved(): void
+    {
+        $this->createHistoryEmployeeFixture();
+        $db = TestDatabase::connect();
+        $db->prepare('DELETE FROM DtrDays WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
+        $db->prepare('DELETE FROM Contracts WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
+
+        apiDeleteEmployee(['EmployeeID' => self::HISTORY_EMPLOYEE], []);
+
+        $this->assertSame(0, $this->rowCount('SELECT COUNT(*) FROM Employees WHERE EmployeeID = ?', self::HISTORY_EMPLOYEE),
+            'The employee still existed after the history rows were removed.');
     }
 
     private function rowCount(string $sql, string $param): int

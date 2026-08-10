@@ -123,15 +123,26 @@ function apiSaveEmployee(array $p, array $user): array
         : ['updated' => true, 'EmployeeID' => $employeeId];
 }
 
-/** Deletes an employee unless referenced by a payroll line. */
+/** Deletes an employee unless payroll or history still points at them. */
 function apiDeleteEmployee(array $p, array $user): array
 {
     requireFields($p, ['EmployeeID']);
+    // Payroll lines are the obvious blocker, but contracts and DTR rows are
+    // just as load-bearing: both carry history the office still needs to
+    // answer "what rate was in force?" and "what time was recorded?" later.
+    // Letting the database cascade them away would make the delete look clean
+    // while erasing the record the audit path depends on.
     $used = (int) DB::scalar('SELECT COUNT(*) FROM PayrollDetails WHERE EmployeeID = ?', [$p['EmployeeID']]);
     if ($used) {
         throw new RuntimeException("This employee appears on $used payroll line(s) and cannot be deleted. "
             . 'Set the status to Inactive instead.');
     }
+    referenceGuard($p['EmployeeID'], [
+        ['SELECT COUNT(*) FROM Contracts WHERE EmployeeID = ?',
+            '%d contract row(s) belong to this employee. Keep the employee inactive instead of deleting their rate history.'],
+        ['SELECT COUNT(*) FROM DtrDays WHERE EmployeeID = ?',
+            '%d DTR row(s) belong to this employee. Keep the employee inactive instead of deleting their timekeeping history.'],
+    ]);
     return ['deleted' => DB::exec('DELETE FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']])];
 }
 

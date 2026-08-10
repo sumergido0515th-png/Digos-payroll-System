@@ -558,7 +558,12 @@ function apiApprovePayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo']);
 
-    $header = DB::row('SELECT * FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    // The worklist is scope-filtered, but the action still has to re-check the
+    // payroll itself. A direct lookup here would let a caller who knows a
+    // payroll number act on a row outside the office they are allowed to
+    // review, which is exactly the kind of "it works in the UI but not in the
+    // gate" bug scope enforcement exists to prevent.
+    $header = PayrollRepo::findScoped($user, $p['PayrollNo']);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
 
     if (!PayrollWorkflow::canTransition($header['Status'], 'PRE_AUDIT_APPROVED')) {
@@ -705,7 +710,10 @@ function apiSuspendPayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo', 'GroundCode', 'Particulars', 'RequiredAction']);
 
-    $header = DB::row('SELECT Status FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    // Same rule as approval: the action can only touch a payroll the caller
+    // may actually see. Otherwise any payroll number becomes an unscoped
+    // write path.
+    $header = PayrollRepo::findScoped($user, $p['PayrollNo']);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
     if (!PayrollWorkflow::canTransition($header['Status'], 'SUSPENDED')) {
         throw new RuntimeException('Cannot move a ' . $header['Status'] . ' payroll to SUSPENDED.');
@@ -739,7 +747,7 @@ function apiReturnPayroll(array $p, array $user): array
 {
     requireFields($p, ['PayrollNo', 'Remarks']);
 
-    $header = DB::row('SELECT Remarks FROM Payroll WHERE PayrollNo = ?', [$p['PayrollNo']]);
+    $header = PayrollRepo::findScoped($user, $p['PayrollNo']);
     if (!$header) throw new RuntimeException('Payroll not found: ' . $p['PayrollNo']);
 
     $result = payrollTransition($p['PayrollNo'], 'RETURNED_TO_PREPARER', $user);
@@ -765,6 +773,13 @@ function apiSettleSuspension(array $p, array $user): array
     if (!$suspension) throw new RuntimeException('Suspension not found: ' . $p['NsNo']);
     if ($suspension['Status'] !== 'Open') {
         throw new RuntimeException('This suspension is already ' . $suspension['Status'] . '.');
+    }
+
+    // The suspense record is scoped through its payroll, so settling it must
+    // be scoped the same way. Settling a suspension on an out-of-scope
+    // payroll would otherwise reopen something the caller could not even see.
+    if (!PayrollRepo::findScoped($user, (string) $suspension['PayrollNo'])) {
+        throw new RuntimeException('Suspension not found: ' . $p['NsNo']);
     }
 
     $status = !empty($p['Waive']) ? 'Waived' : 'Settled';

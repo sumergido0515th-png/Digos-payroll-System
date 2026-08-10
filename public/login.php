@@ -165,22 +165,16 @@ $taglineAccent = $taglineBits[1] ?? '';
       position: fixed; inset: 0; z-index: 0;
       background-color: var(--gov-blue-dark, #082c6b);
 <?php if ($bgPhoto !== ''): ?>
-      /* A duotone wash, not the raw upload: whatever colors a photo happens to
-         be shot in, dropped in as-is it reads as a sticker laid over the blue
-         chrome around it. Blending a gov-blue gradient onto the photo in
-         "color" mode keeps every shape, edge and shadow the photo already has
-         - that is what this blend mode preserves - and repaints its hue
-         toward the same navy the seal, card and headline already use, so the
-         photo reads as part of one scene instead of a clashing background. */
-      background-image:
-        linear-gradient(160deg, rgba(8,44,107,.6) 0%, rgba(11,61,145,.3) 45%, rgba(18,62,138,.55) 100%),
-        url("<?= $bgPhoto ?>");
-      background-blend-mode: color, normal;
-      background-size: cover, cover;
-      background-repeat: no-repeat, no-repeat;
-      background-position: center top, center top;
+      background-image: url("<?= $bgPhoto ?>");
+      background-size: cover;
+      background-repeat: no-repeat;
+      background-position: center top;
+      background-color: transparent;
 <?php endif; ?>
     }
+<?php if ($bgPhoto !== ''): ?>
+    .hero-photo::after { background: none; }
+<?php endif; ?>
 <?php if ($bgPhoto !== ''): ?>
     .hero-photo.standby {
       background-image: url("<?= $bgPhoto ?>");
@@ -237,8 +231,10 @@ $taglineAccent = $taglineBits[1] ?? '';
     .seal { width: 84px; height: 84px; border-radius: 50%; background: var(--gov-blue, #0b3d91);
             color: #fff; display: inline-flex; align-items: center; justify-content: center;
             font-size: 42px; box-shadow: 0 8px 24px rgba(0,0,0,.35); border: 3px solid rgba(255,255,255,.85); }
-    .seal.has-logo { width: 116px; height: 116px; border-radius: 16px; background: #fff; padding: 6px; }
-    .seal.has-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .seal.has-logo { width: 116px; height: 116px; border-radius: 50%; background: #fff; padding: 6px;
+                   box-shadow: 0 14px 32px rgba(0,0,0,.18); border: 2px solid rgba(255,255,255,.9); }
+    .seal.has-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;
+                         box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
     /* White on the photo, not the dark navy this used before there was
        always a photo behind it - and a shadow rather than relying on the
        photo being dark enough everywhere on its own. */
