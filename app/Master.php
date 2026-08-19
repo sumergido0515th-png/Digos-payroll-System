@@ -2,38 +2,26 @@
 /**
  * ============================================================================
  * Master.php - Master data: Employees, Offices, Departments, Functions,
- * Timekeepers and the combined lookups endpoint. Mirrors src/Employee.gs.
+ * Timekeepers and the combined lookups endpoint.
  * ============================================================================
  */
 
 declare(strict_types=1);
 
+use Digos\Repo\EmployeeRepo;
+
 /* ==========================================================================
  * Employees
  * ======================================================================== */
 
-/** Lists employees with live search + filters + pagination. */
+/** Lists employees with live search + filters + pagination, within scope. */
 function apiListEmployees(array $p, array $user): array
 {
-    $sql = 'SELECT * FROM Employees WHERE 1=1';
-    $params = [];
-    foreach (['OfficeCode', 'Department', 'EmploymentType', 'Status'] as $f) {
-        if (!empty($p[$f])) { $sql .= " AND `$f` = ?"; $params[] = $p[$f]; }
-    }
-    if (!empty($p['Function'])) { $sql .= ' AND FunctionName = ?'; $params[] = $p['Function']; }
-    if (!empty($p['search'])) {
-        $fields = ['EmployeeID', 'EmployeeNo', 'LastName', 'FirstName', 'MiddleName',
-            'Position', 'Department', 'OfficeCode', 'Email', 'TIN'];
-        $sql .= ' AND (' . implode(' OR ', array_map(fn($f) => "`$f` LIKE ?", $fields)) . ')';
-        foreach ($fields as $f) $params[] = '%' . $p['search'] . '%';
-    }
-    $sql .= ' ORDER BY LastName, FirstName';
-
     $rows = array_map(function ($e) {
         $e = aliasFunctionOut($e);
         $e['FullName'] = fullName($e);
         return $e;
-    }, DB::rows($sql, $params));
+    }, EmployeeRepo::listScoped($user, $p, EmployeeRepo::mayReadSensitive($user)));
 
     $page = max(1, (int) num($p['page'] ?? 1));
     $size = (int) num($p['pageSize'] ?? 25) ?: 25;
@@ -45,11 +33,14 @@ function apiListEmployees(array $p, array $user): array
     ];
 }
 
-/** Returns a single employee. */
+/** Returns a single employee, if the caller's scope covers them. */
 function apiGetEmployee(array $p, array $user): array
 {
     requireFields($p, ['EmployeeID']);
-    $e = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
+    $e = EmployeeRepo::findScoped($user, $p['EmployeeID'], EmployeeRepo::mayReadSensitive($user));
+
+    // As with apiGetPayroll: out of scope and absent report the same thing, so
+    // that a caller cannot confirm another office's employee exists by asking.
     if (!$e) throw new RuntimeException('Employee not found: ' . $p['EmployeeID']);
     $e = aliasFunctionOut($e);
     $e['FullName'] = fullName($e);
@@ -67,6 +58,9 @@ function apiSaveEmployee(array $p, array $user): array
     if (!empty($p['ContractStart']) && !empty($p['ContractEnd']) && $p['ContractStart'] > $p['ContractEnd']) {
         throw new RuntimeException('Contract End must fall on or after Contract Start.');
     }
+    if (($p['BIRTaxPercent'] ?? '') !== '' && !(num($p['BIRTaxPercent']) >= 0 && num($p['BIRTaxPercent']) <= 100)) {
+        throw new RuntimeException('BIR Tax Percent must be between 0 and 100.');
+    }
 
     if (!empty($p['EmployeeNo'])) {
         $clash = DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeNo = ? AND EmployeeID <> ?',
@@ -80,47 +74,99 @@ function apiSaveEmployee(array $p, array $user): array
         'EmployeeNo' => $p['EmployeeNo'] ?? '',
         'TIN' => $p['TIN'] ?? '', 'GSIS' => $p['GSIS'] ?? '',
         'PhilHealth' => $p['PhilHealth'] ?? '', 'PagIBIG' => $p['PagIBIG'] ?? '',
+        'CashCard' => $p['CashCard'] ?? '',
+        'SSSDeductionApproved' => !empty($p['SSSDeductionApproved']) ? 1 : 0,
+        'BIRTaxPercent' => ($p['BIRTaxPercent'] ?? '') !== '' ? num($p['BIRTaxPercent']) : null,
         'LastName' => $p['LastName'], 'FirstName' => $p['FirstName'],
         'MiddleName' => $p['MiddleName'] ?? '', 'Suffix' => $p['Suffix'] ?? '',
-        'Birthdate' => $p['Birthdate'] ?: null, 'Gender' => $p['Gender'] ?? '',
+        // The date fields take `?? '' ?:` rather than a bare `?:` so that an
+        // omitted key and an empty string both become NULL. A DATE column
+        // rejects '' under STRICT_ALL_TABLES, and every caller other than the
+        // SPA - a test, a tool, a future import - is entitled to leave an
+        // optional field out entirely rather than send it blank.
+        'Birthdate' => ($p['Birthdate'] ?? '') ?: null, 'Gender' => $p['Gender'] ?? '',
         'Address' => $p['Address'] ?? '', 'Contact' => $p['Contact'] ?? '',
         'Email' => $p['Email'] ?? '',
         'OfficeCode' => $p['OfficeCode'], 'Department' => $p['Department'] ?? '',
         'Division' => $p['Division'] ?? '', 'FunctionName' => $p['Function'] ?? '',
-        'EmploymentType' => $p['EmploymentType'], 'Position' => $p['Position'],
+        'EmploymentType' => $p['EmploymentType'],
+        'EmploymentTypeCode' => employmentTypeCode($p['EmploymentType']),
+        'Position' => $p['Position'],
         'SalaryRate' => $rates['salaryRate'], 'DailyRate' => $rates['dailyRate'],
         'HourlyRate' => $rates['hourlyRate'], 'MonthlyRate' => $rates['monthlyRate'],
-        'DateHired' => $p['DateHired'] ?: null,
-        'ContractStart' => $p['ContractStart'] ?: null,
-        'ContractEnd' => $p['ContractEnd'] ?: null,
+        'DateHired' => ($p['DateHired'] ?? '') ?: null,
+        'ContractStart' => ($p['ContractStart'] ?? '') ?: null,
+        'ContractEnd' => ($p['ContractEnd'] ?? '') ?: null,
         'Status' => $p['Status'] ?? 'Active',
         'PhotoURL' => $p['PhotoURL'] ?? '', 'SignatureURL' => $p['SignatureURL'] ?? '',
         'Remarks' => $p['Remarks'] ?? '',
     ];
 
-    if ($isNew) {
-        $record['EmployeeID'] = newId('EMP');
-        DB::insert('Employees', $record);
-        return ['created' => true, 'EmployeeID' => $record['EmployeeID']];
+    $employeeId = $isNew ? newId('EMP') : $p['EmployeeID'];
+
+    if (!$isNew && !DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeID = ?', [$employeeId])) {
+        throw new RuntimeException('Employee not found: ' . $employeeId);
     }
-    if (!DB::update('Employees', $record, 'EmployeeID', $p['EmployeeID'])) {
-        // rowCount can be 0 on a no-change update; verify existence explicitly.
-        $exists = DB::row('SELECT EmployeeID FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
-        if (!$exists) throw new RuntimeException('Employee not found: ' . $p['EmployeeID']);
-    }
-    return ['updated' => true, 'EmployeeID' => $p['EmployeeID']];
+
+    // One record in, two tables out. The split is migration 0015's; the caller
+    // still posts a single form, because which tier a field belongs to is the
+    // system's classification and not something a timekeeper should have to
+    // know. EmployeeRepo::save() writes both halves in one transaction - a
+    // directory row whose restricted half failed to save is an employee with no
+    // rate, which the payroll engine would compute as zero pay rather than
+    // refuse.
+    [$tier1, $tier2] = EmployeeRepo::splitTiers($record);
+    EmployeeRepo::save($employeeId, $tier1, $tier2, $isNew, EmployeeRepo::mayReadSensitive($user));
+
+    return $isNew
+        ? ['created' => true, 'EmployeeID' => $employeeId]
+        : ['updated' => true, 'EmployeeID' => $employeeId];
 }
 
-/** Deletes an employee unless referenced by a payroll line. */
+/** Deletes an employee unless payroll or history still points at them. */
 function apiDeleteEmployee(array $p, array $user): array
 {
     requireFields($p, ['EmployeeID']);
+    // Payroll lines are the obvious blocker, but contracts and DTR rows are
+    // just as load-bearing: both carry history the office still needs to
+    // answer "what rate was in force?" and "what time was recorded?" later.
+    // Letting the database cascade them away would make the delete look clean
+    // while erasing the record the audit path depends on.
     $used = (int) DB::scalar('SELECT COUNT(*) FROM PayrollDetails WHERE EmployeeID = ?', [$p['EmployeeID']]);
     if ($used) {
         throw new RuntimeException("This employee appears on $used payroll line(s) and cannot be deleted. "
             . 'Set the status to Inactive instead.');
     }
+    referenceGuard($p['EmployeeID'], [
+        ['SELECT COUNT(*) FROM Contracts WHERE EmployeeID = ?',
+            '%d contract row(s) belong to this employee. Keep the employee inactive instead of deleting their rate history.'],
+        ['SELECT COUNT(*) FROM DtrDays WHERE EmployeeID = ?',
+            '%d DTR row(s) belong to this employee. Keep the employee inactive instead of deleting their timekeeping history.'],
+    ]);
     return ['deleted' => DB::exec('DELETE FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']])];
+}
+
+/**
+ * Maps the free-text `EmploymentType` the form posts onto the `EmploymentTypes`
+ * key, or null when it matches nothing known.
+ *
+ * Both columns are written on save. `EmploymentType` stays because the printed
+ * form and the SPA read it; `EmploymentTypeCode` is what Phase 4's resolvers
+ * branch on, and they receive the `EmploymentTypes` row rather than comparing
+ * type names, which is only possible if the key is populated.
+ *
+ * The mapping is deliberately identical to the backfill in
+ * `migrations/0003_employment_types.sql`. If one changes the other must too, or
+ * rows created before and after the change classify differently.
+ */
+function employmentTypeCode(?string $employmentType): ?string
+{
+    return match (strtoupper(trim((string) $employmentType))) {
+        'JO', 'JOB ORDER' => 'JO',
+        'COS', 'CONTRACT OF SERVICE' => 'COS',
+        'PLANTILLA', 'REGULAR', 'PERMANENT' => 'PLA',
+        default => null,
+    };
 }
 
 /**
@@ -181,9 +227,19 @@ function apiSaveOffice(array $p, array $user): array
         'Department' => $p['Department'] ?? '',
         'Division' => $p['Division'] ?? '',
         'FunctionName' => $p['Function'] ?? '',
+        // The Function/PPA the office charges to, as the key rather than the
+        // display string. Until this was written the column could only ever be
+        // set by the 0004 backfill, so an office created afterwards had no
+        // chargeable function at all - and Phase 6's CAFOA rules check exactly
+        // this. NULL rather than '' because it is a foreign key to Functions.
+        'FunctionCode' => ($p['FunctionCode'] ?? '') ?: null,
+        'ParentOfficeCode' => ($p['ParentOfficeCode'] ?? '') ?: null,
         'OfficeHead' => $p['OfficeHead'] ?? '',
         'Status' => $p['Status'] ?? 'Active',
     ];
+    if (($record['ParentOfficeCode'] ?? null) === $code) {
+        throw new RuntimeException('An office cannot be its own parent office.');
+    }
     if (DB::row('SELECT OfficeCode FROM Offices WHERE OfficeCode = ?', [$code])) {
         DB::update('Offices', $record, 'OfficeCode', $code);
         return ['updated' => true, 'OfficeCode' => $code];
@@ -193,13 +249,48 @@ function apiSaveOffice(array $p, array $user): array
     return ['created' => true, 'OfficeCode' => $code];
 }
 
-/** Deletes an office when no employee references it. */
+/** Deletes an office when nothing references it. */
 function apiDeleteOffice(array $p, array $user): array
 {
     requireFields($p, ['OfficeCode']);
-    $used = (int) DB::scalar('SELECT COUNT(*) FROM Employees WHERE OfficeCode = ?', [$p['OfficeCode']]);
-    if ($used) throw new RuntimeException("$used employee(s) are assigned to this office. Reassign them first.");
-    return ['deleted' => DB::exec('DELETE FROM Offices WHERE OfficeCode = ?', [$p['OfficeCode']])];
+    $code = $p['OfficeCode'];
+
+    // Every reference has to be checked here, not just employees. Migration
+    // 0009 made these real foreign keys, so the database now refuses the
+    // delete on its own - but what it raises is SQLSTATE 23000 ... errno 1451,
+    // and api.php returns the exception message straight to the browser. A
+    // timekeeper reading "a foreign key constraint fails" learns nothing about
+    // what to do next; the checks below say which records are in the way.
+    referenceGuard($code, [
+        ['SELECT COUNT(*) FROM Employees WHERE OfficeCode = ?',
+            '%d employee(s) are assigned to this office. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Payroll WHERE OfficeCode = ?',
+            '%d payroll transaction(s) are charged to this office. An office with payroll history cannot be deleted - set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM PayrollDetails WHERE ChargedOfficeCode = ?',
+            '%d payroll line(s) are charged to this office. Set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM Timekeepers WHERE OfficeCode = ?',
+            '%d timekeeper(s) are assigned to this office. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Offices WHERE ParentOfficeCode = ?',
+            '%d office(s) report to this one as their parent. Reassign them first.'],
+        ['SELECT COUNT(*) FROM Functions WHERE OwningOfficeCode = ?',
+            '%d Function/PPA code(s) are owned by this office. Reassign them first.'],
+    ]);
+    return ['deleted' => DB::exec('DELETE FROM Offices WHERE OfficeCode = ?', [$code])];
+}
+
+/**
+ * Refuses a delete that other records still point at, in the caller's words.
+ *
+ * Each entry is [count query taking the key once, message with one %d]. The
+ * first non-zero count wins - listing every obstacle at once reads as a wall
+ * of text, and clearing the first usually clears the rest.
+ */
+function referenceGuard(string $key, array $checks): void
+{
+    foreach ($checks as [$sql, $message]) {
+        $n = (int) DB::scalar($sql, [$key]);
+        if ($n) throw new RuntimeException(sprintf($message, $n));
+    }
 }
 
 /** Lists departments with live search. */
@@ -218,9 +309,13 @@ function apiSaveDepartment(array $p, array $user): array
     $record = [
         'DeptName' => $p['DeptName'],
         'OfficeCode' => $p['OfficeCode'] ?? '',
+        'ParentDeptCode' => ($p['ParentDeptCode'] ?? '') ?: null,
         'Head' => $p['Head'] ?? '',
         'Status' => $p['Status'] ?? 'Active',
     ];
+    if ($record['ParentDeptCode'] === $code) {
+        throw new RuntimeException('A department cannot be its own parent department.');
+    }
     if (DB::row('SELECT DeptCode FROM Departments WHERE DeptCode = ?', [$code])) {
         DB::update('Departments', $record, 'DeptCode', $code);
         return ['updated' => true];
@@ -253,6 +348,7 @@ function apiSaveFunction(array $p, array $user): array
     $record = [
         'FunctionName' => $p['FunctionName'],
         'Description' => $p['Description'] ?? '',
+        'OwningOfficeCode' => ($p['OwningOfficeCode'] ?? '') ?: null,
         'Status' => $p['Status'] ?? 'Active',
     ];
     if (DB::row('SELECT FunctionCode FROM Functions WHERE FunctionCode = ?', [$code])) {
@@ -268,7 +364,23 @@ function apiSaveFunction(array $p, array $user): array
 function apiDeleteFunction(array $p, array $user): array
 {
     requireFields($p, ['FunctionCode']);
-    return ['deleted' => DB::exec('DELETE FROM Functions WHERE FunctionCode = ?', [$p['FunctionCode']])];
+    $code = $p['FunctionCode'];
+
+    // Unlike the office keys, every foreign key onto Functions is ON DELETE
+    // SET NULL, so the database raises nothing at all: it quietly blanks
+    // FunctionCode on the offices, payrolls and payroll lines charged to this
+    // fund - including approved ones. Losing which appropriation paid an
+    // approved payroll is not recoverable from anything else in the schema,
+    // and it is exactly what Phase 6's CAFOA rules read.
+    referenceGuard($code, [
+        ['SELECT COUNT(*) FROM Payroll WHERE FunctionCode = ?',
+            '%d payroll transaction(s) are charged to this Function/PPA. Deleting it would erase which appropriation paid them - set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM PayrollDetails WHERE FunctionCode = ?',
+            '%d payroll line(s) are charged to this Function/PPA. Set it to Inactive instead.'],
+        ['SELECT COUNT(*) FROM Offices WHERE FunctionCode = ?',
+            '%d office(s) charge to this Function/PPA. Assign them a different one first.'],
+    ]);
+    return ['deleted' => DB::exec('DELETE FROM Functions WHERE FunctionCode = ?', [$code])];
 }
 
 /* ==========================================================================
@@ -303,6 +415,15 @@ function apiSaveTimekeeper(array $p, array $user): array
         'Status' => $p['Status'] ?? 'Active',
     ];
     if (!empty($p['TimekeeperID'])) {
+        // Checked rather than updated blind. An UPDATE against an id that is
+        // not there matches no rows and raises nothing, so this reported
+        // 'updated' => true having written precisely nothing - invisible from
+        // the SPA, which only ever sends an id it was given, and a silent no-op
+        // for a bulk import, which is where a wrong id actually arrives.
+        // apiSaveEmployee and apiSavePeriod both check first; this did not.
+        if (!DB::row('SELECT TimekeeperID FROM Timekeepers WHERE TimekeeperID = ?', [$p['TimekeeperID']])) {
+            throw new RuntimeException('Timekeeper not found: ' . $p['TimekeeperID']);
+        }
         DB::update('Timekeepers', $record, 'TimekeeperID', $p['TimekeeperID']);
         return ['updated' => true, 'TimekeeperID' => $p['TimekeeperID']];
     }
@@ -336,7 +457,7 @@ function apiGetLookups(array $p, array $user): array
         'periods' => DB::rows('SELECT * FROM PayrollPeriods ORDER BY StartDate DESC'),
         'employmentTypes' => ['Job Order', 'Contract of Service'],
         'statuses' => ['Active', 'Inactive'],
-        'payrollStatuses' => ['Draft', 'Pending', 'Approved', 'Released', 'Cancelled'],
+        'payrollStatuses' => \Digos\Domain\Workflow\PayrollWorkflow::ALL,
         'roles' => array_keys(PERMISSIONS),
     ];
 }

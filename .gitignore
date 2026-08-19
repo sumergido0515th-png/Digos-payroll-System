@@ -1,0 +1,28 @@
+# Dependencies (composer.lock IS committed - this is an application, not a library)
+/vendor/
+composer.phar
+
+# Build output (tools/build-deploy.php)
+/dist/
+
+# Runtime artefacts
+/backups/*.sql
+/public/assets/uploads/
+/.phpunit.cache/
+/.phpunit.result.cache
+
+# Real credentials. app/config.php is tracked and holds only XAMPP defaults;
+# anything secret belongs here, which is why this file never enters the repo.
+/app/config.local.php
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# Uploaded payroll attachments. The rows are backed up; the bytes are the
+# installation's own data and never belong in the repository.
+attachments/*
+!attachments/.gitkeep

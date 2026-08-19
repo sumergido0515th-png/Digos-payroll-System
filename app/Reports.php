@@ -3,11 +3,15 @@
  * ============================================================================
  * Reports.php - Dashboard aggregation and the 10-report engine.
  * Uniform report shape: {title, columns, rows, totals, filters, generatedAt}.
- * Mirrors src/Reports.gs + the dashboard endpoint from src/Code.gs.
  * ============================================================================
  */
 
 declare(strict_types=1);
+
+use Digos\Domain\Workflow\PayrollWorkflow;
+use Digos\Repo\EmployeeRepo;
+use Digos\Repo\PayrollRepo;
+use Digos\Repo\ReferenceRepo;
 
 /* ==========================================================================
  * Dashboard
@@ -16,24 +20,24 @@ declare(strict_types=1);
 /** Stat cards, chart series and the recent transaction feed. */
 function apiGetDashboard(array $p, array $user): array
 {
-    $counts = DB::row(
-        "SELECT COUNT(*) AS total,
-                SUM(Status = 'Active' AND EmploymentType = 'Job Order') AS jo,
-                SUM(Status = 'Active' AND EmploymentType = 'Contract of Service') AS cos
-           FROM Employees") ?? ['total' => 0, 'jo' => 0, 'cos' => 0];
+    // Every figure below is the caller's own scope, not the city's. This
+    // screen showed citywide headcount and citywide money to anyone holding
+    // dashboard.view, which is every role - an office-scoped user could not
+    // open another office's payroll but could read its totals off the front
+    // page. The citywide view returns in Phase 9, behind its own explicit
+    // VIEW_CITYWIDE_AGGREGATE permission rather than by default.
+    $counts = EmployeeRepo::countsScoped($user);
 
-    $payrolls = array_map('aliasFunctionOut', DB::rows('SELECT * FROM Payroll'));
-    $pending = array_filter($payrolls, fn($x) => in_array($x['Status'], ['Draft', 'Pending'], true));
-    $processed = array_filter($payrolls, fn($x) => in_array($x['Status'], ['Approved', 'Released'], true));
+    $payrolls = array_map('aliasFunctionOut', PayrollRepo::listScoped($user, []));
+    // Processed = passed pre-audit sign-off (Phase 7's OFFICIAL states); pending
+    // is everything short of that and not yet cancelled - Draft, awaiting
+    // pre-audit, suspended or returned all still need something done to them.
+    $pending = array_filter($payrolls, fn($x) => !PayrollWorkflow::isOfficial($x['Status'])
+        && $x['Status'] !== 'CANCELLED');
+    $processed = array_filter($payrolls, fn($x) => PayrollWorkflow::isOfficial($x['Status']));
 
     // Monthly net/gross series for the last 12 period-months.
-    $monthlyRows = DB::rows(
-        "SELECT pd.PayrollYear, pd.PayrollMonth, MIN(pd.StartDate) AS SortDate,
-                SUM(h.TotalGross) AS gross, SUM(h.TotalNet) AS net, COUNT(*) AS count
-           FROM Payroll h JOIN PayrollPeriods pd ON pd.PeriodID = h.PeriodID
-          WHERE h.Status <> 'Cancelled'
-          GROUP BY pd.PayrollYear, pd.PayrollMonth
-          ORDER BY SortDate DESC LIMIT 12");
+    $monthlyRows = PayrollRepo::monthlyTotalsScoped($user);
     $monthly = array_reverse(array_map(fn($m) => [
         'label' => substr((string) $m['PayrollMonth'], 0, 3) . ' ' . $m['PayrollYear'],
         'gross' => round2($m['gross']),
@@ -42,7 +46,7 @@ function apiGetDashboard(array $p, array $user): array
     ], $monthlyRows));
 
     $statusSplit = [];
-    foreach (['Draft', 'Pending', 'Approved', 'Released', 'Cancelled'] as $s) {
+    foreach (PayrollWorkflow::ALL as $s) {
         $statusSplit[] = ['label' => $s,
             'value' => count(array_filter($payrolls, fn($x) => $x['Status'] === $s))];
     }
@@ -54,8 +58,11 @@ function apiGetDashboard(array $p, array $user): array
             'totalEmployees' => (int) $counts['total'],
             'activeJO' => (int) $counts['jo'],
             'activeCOS' => (int) $counts['cos'],
-            'departments' => (int) DB::scalar('SELECT COUNT(*) FROM Departments'),
-            'offices' => (int) DB::scalar('SELECT COUNT(*) FROM Offices'),
+            // Structure, not payroll data: how many offices the city has is
+            // not a fact about anyone's pay, and the office list is already in
+            // every filter dropdown.
+            'departments' => ReferenceRepo::structureCounts()['departments'],
+            'offices' => ReferenceRepo::structureCounts()['offices'],
             'payrollCount' => count($payrolls),
             'pendingPayroll' => count($pending),
             'processedPayroll' => count($processed),
@@ -80,14 +87,14 @@ function apiGetDashboard(array $p, array $user): array
 function apiRunReport(array $p, array $user): array
 {
     requireFields($p, ['type']);
-    $ctx = reportContext($p);
+    $ctx = reportContext($p, $user);
 
     $report = match ($p['type']) {
         'monthly' => monthlyReport($ctx),
         'office' => groupedReport('Office Payroll Report', 'OfficeCode', 'Office', $ctx),
         'department' => groupedReport('Department Payroll Report', 'Department', 'Department', $ctx),
         'summary' => summaryReport($ctx),
-        'history' => historyReport($p, $ctx),
+        'history' => historyReport($p, $ctx, $user),
         'register' => reportShape('Payroll Register', detailColumns(),
             array_map('detailRow', $ctx['details'])),
         'journal' => journalReport($ctx),
@@ -96,7 +103,7 @@ function apiRunReport(array $p, array $user): array
     };
 
     $report['generatedAt'] = date('m/d/Y H:i');
-    $report['filters'] = describeFilters($p, $ctx);
+    $report['filters'] = describeFilters($p, $ctx, $user);
     return $report;
 }
 
@@ -104,17 +111,19 @@ function apiRunReport(array $p, array $user): array
  * Loads payroll headers + detail lines pre-filtered by the payload,
  * excluding Cancelled payrolls, with period labels attached.
  */
-function reportContext(array $p): array
+function reportContext(array $p, array $user): array
 {
     $periods = [];
-    foreach (DB::rows('SELECT * FROM PayrollPeriods') as $pd) $periods[$pd['PeriodID']] = $pd;
+    // Periods are unscoped reference data: a period is a calendar fortnight,
+ // not anybody's payroll, and every scoped user needs the label for their
+ // own rows. Nothing about which offices used it is disclosed here.
+    foreach (ReferenceRepo::periods() as $pd) $periods[$pd['PeriodID']] = $pd;
 
-    $sql = "SELECT * FROM Payroll WHERE Status <> 'Cancelled'";
-    $params = [];
-    foreach (['PeriodID', 'OfficeCode', 'Department'] as $f) {
-        if (!empty($p[$f])) { $sql .= " AND `$f` = ?"; $params[] = $p[$f]; }
-    }
-    $headers = array_map('aliasFunctionOut', DB::rows($sql, $params));
+    // Scoped, both halves. The reports are the other way a payroll can be read
+    // in bulk, and this one was missed when the list and print paths were
+    // scoped - report.view is held by five of the seven roles, and every report
+    // was running citywide regardless of the caller's grants.
+    $headers = array_map('aliasFunctionOut', PayrollRepo::forReportingScoped($user, $p));
 
     $byNo = [];
     foreach ($headers as &$h) {
@@ -124,19 +133,14 @@ function reportContext(array $p): array
     unset($h);
 
     $details = [];
-    if ($byNo) {
-        $ph = implode(',', array_fill(0, count($byNo), '?'));
-        $dsql = "SELECT * FROM PayrollDetails WHERE PayrollNo IN ($ph)";
-        $dparams = array_keys($byNo);
-        if (!empty($p['EmployeeID'])) { $dsql .= ' AND EmployeeID = ?'; $dparams[] = $p['EmployeeID']; }
-        foreach (DB::rows($dsql . ' ORDER BY PayrollNo, LineNo', $dparams) as $d) {
-            $h = $byNo[$d['PayrollNo']];
-            $d['OfficeCode'] = $h['OfficeCode'];
-            $d['Department'] = $h['Department'];
-            $d['PeriodLabel'] = $h['PeriodLabel'];
-            $d['PayrollStatus'] = $h['Status'];
-            $details[] = $d;
-        }
+    foreach (PayrollRepo::detailsForReportingScoped(
+        $user, array_keys($byNo), (string) ($p['EmployeeID'] ?? '')) as $d) {
+        $h = $byNo[$d['PayrollNo']];
+        $d['OfficeCode'] = $h['OfficeCode'];
+        $d['Department'] = $h['Department'];
+        $d['PeriodLabel'] = $h['PeriodLabel'];
+        $d['PayrollStatus'] = $h['Status'];
+        $details[] = $d;
     }
     return ['headers' => $headers, 'details' => $details, 'periods' => $periods];
 }
@@ -150,14 +154,14 @@ function periodLabel(?array $pd): string
 }
 
 /** Human-readable filter line under the report title. */
-function describeFilters(array $p, array $ctx): string
+function describeFilters(array $p, array $ctx, array $user): string
 {
     $parts = [];
     if (!empty($p['PeriodID'])) $parts[] = 'Period: ' . periodLabel($ctx['periods'][$p['PeriodID']] ?? null);
     if (!empty($p['OfficeCode'])) $parts[] = 'Office: ' . $p['OfficeCode'];
     if (!empty($p['Department'])) $parts[] = 'Department: ' . $p['Department'];
     if (!empty($p['EmployeeID'])) {
-        $e = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
+        $e = EmployeeRepo::findScoped($user, (string) $p['EmployeeID']);
         if ($e) $parts[] = 'Employee: ' . fullName($e);
     }
     return $parts ? implode('  |  ', $parts) : 'All records';
@@ -242,10 +246,10 @@ function summaryReport(array $ctx): array
     ], $groups);
 }
 
-function historyReport(array $p, array $ctx): array
+function historyReport(array $p, array $ctx, array $user): array
 {
     requireFields($p, ['EmployeeID']);
-    $e = DB::row('SELECT * FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']]);
+    $e = EmployeeRepo::findScoped($user, (string) $p['EmployeeID']);
     return reportShape('Employee Payroll History - ' . ($e ? fullName($e) : $p['EmployeeID']),
         detailColumns(), array_map('detailRow', $ctx['details']));
 }

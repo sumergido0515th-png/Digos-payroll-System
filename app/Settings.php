@@ -9,19 +9,59 @@
 
 declare(strict_types=1);
 
-/** Tables included in backups, in restore-safe order. */
-const BACKUP_TABLES = ['Employees', 'Offices', 'Departments', 'Functions', 'Timekeepers',
-    'PayrollPeriods', 'Payroll', 'PayrollDetails', 'Users', 'Logs', 'Settings', 'Counters'];
+use Digos\Repo\BackupRepo;
+use Digos\Repo\SettingsRepo;
+
+/**
+ * Tables included in backups, parents before children.
+ *
+ * Phase 1 added EmploymentTypes, Contracts and DtrDays and nothing added them
+ * here, so every backup taken between then and now silently omitted them. That
+ * is worse than it sounds: restoring deletes Employees rows first, and
+ * Contracts and DtrDays cascade from Employees - so a restore would have wiped
+ * both and had nothing to put back.
+ *
+ * `Backup` and `schema_migrations` are excluded on purpose. The registry has to
+ * survive so the file being restored from is still listed afterwards, and the
+ * migration ledger describes the schema, which a data-only restore never
+ * touches.
+ */
+const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Functions',
+    'Employees', 'EmployeeSensitive', 'Contracts', 'Timekeepers', 'PayrollPeriods', 'DtrDays',
+    'Payroll', 'PayrollDetails', 'Logs', 'Settings', 'Counters',
+    // Phase 3's documents. Memorandum before MemorandumEmployees, and both
+    // after Employees, because restore DELETEs and re-INSERTs in this order
+    // and the junction's two foreign keys have to have somewhere to point.
+    'Memorandum', 'MemorandumEmployees', 'BioExemptions', 'TravelOrders', 'WorkShifts',
+    // Phase 4's calendar. Losing these would not lose a payroll, but it would
+    // lose the basis on which one was computed - and the pay rules are the
+    // versioned policy a pre-audit re-checks history against.
+    'Holidays', 'HolidayPayRules',
+    // Phase 5. The rows only - the FILES live in attachments/ and are not in a
+    // SQL dump, so a restore rebuilds the index and the bytes have to be backed
+    // up separately. Recorded here because a registry pointing at files nobody
+    // copied is worse than no registry: it looks like the evidence survived.
+    'Attachments', 'AttachmentCoverage',
+    // Phase 7's workflow. After Payroll and PayrollDetails: a suspension
+    // names a PayrollNo and sometimes an EmployeeID, both of which have to
+    // already exist when this row lands during a restore.
+    'Suspensions',
+    // Phase 8. After Payroll, for the same reason as Suspensions - every row
+    // names a PayrollNo. Without this, a restore recreates a payroll with no
+    // record of what was ever printed from it, which is indistinguishable
+    // from nothing having been printed.
+    'PrintLog',
+    // Last, because restore DELETEs and re-INSERTs in this order and every one
+    // of ScopeGrants' foreign keys - Users, Offices, Functions,
+    // EmploymentTypes - has to be back in place before its rows can land.
+    'ScopeGrants'];
 
 /** Returns the whole Settings table as a map, cached per request. */
 function settingsMap(bool $refresh = false): array
 {
     static $map = null;
     if ($map === null || $refresh) {
-        $map = [];
-        foreach (DB::rows('SELECT KeyName, Value FROM Settings') as $r) {
-            $map[$r['KeyName']] = $r['Value'];
-        }
+        $map = SettingsRepo::all();
     }
     return $map;
 }
@@ -36,8 +76,7 @@ function getSetting(string $key, string $fallback = ''): string
 /** Writes one setting (upsert) and refreshes the cache. */
 function setSetting(string $key, mixed $value): void
 {
-    DB::exec('INSERT INTO Settings (KeyName, Value) VALUES (?, ?)
-              ON DUPLICATE KEY UPDATE Value = VALUES(Value)', [$key, (string) $value]);
+    SettingsRepo::put($key, (string) $value);
     settingsMap(true);
 }
 
@@ -57,6 +96,156 @@ function apiSaveSettings(array $p, array $user): array
 }
 
 /* ==========================================================================
+ * Branding images (office logo, page watermark)
+ * ======================================================================== */
+
+/**
+ * The settings an image may be uploaded into, and the file-name prefix each
+ * one is stored under.
+ *
+ * This is an allowlist for the same reason interpolated column names are: the
+ * key arrives in the payload, and without it a caller could aim an upload at
+ * any setting in the table - SystemTheme, MaxEmployeesPerPayroll, or the
+ * signatory names printed on a voucher.
+ */
+const IMAGE_SETTINGS = [
+    'OfficeLogoUrl' => 'LOGO',
+    'PrintLogoUrl' => 'SEAL',
+    'WatermarkUrl' => 'MARK',
+    'LoginBackgroundUrl' => 'LOGINBG',
+];
+
+/** Accepted formats: detected image type => the extension we store it as. */
+const IMAGE_TYPES = [
+    IMAGETYPE_PNG => 'png',
+    IMAGETYPE_JPEG => 'jpg',
+    IMAGETYPE_GIF => 'gif',
+    IMAGETYPE_WEBP => 'webp',
+];
+
+/** Largest image accepted. The logo prints at ~62px wide, so this is generous. */
+const IMAGE_MAX_BYTES = 2097152;
+
+/**
+ * How faint the watermark may be forced to stay, whatever is typed in.
+ *
+ * The point of the ceiling is readability: past this point a seal with any
+ * solid area of its own starts competing with the text sitting over it, and
+ * the dashboard figures are what people are there to read. Raised from .25 to
+ * .32 once the watermark stopped being hard-recolored (see the "natural"
+ * treatment note on #watermark in app.css) - the plain photo needs a touch
+ * more opacity than the old duotone version did to read as clearly. The
+ * dashboard hero banner is a separate, purpose-built surface and is not
+ * bound by this constant. The floor stops a value of 0 being mistaken for
+ * "the upload did not work".
+ */
+const WATERMARK_MIN_OPACITY = 0.02;
+const WATERMARK_MAX_OPACITY = 0.32;
+
+/**
+ * Stores an uploaded branding image and points its setting at it.
+ *
+ * Payload: {key: "OfficeLogoUrl", data: "data:image/png;base64,..."}. The
+ * browser reads the file and sends it inline because api.php speaks JSON only
+ * - there is no multipart endpoint to add one to.
+ *
+ * The stored name and extension are generated here from the *detected* image
+ * type and never from what the browser sent: a caller-supplied file name is
+ * how a ".php" ends up under the web root. SVG is refused for the same reason
+ * - it is a script container, and this directory is served same-origin.
+ */
+function apiUploadImageSetting(array $p, array $user): array
+{
+    requireFields($p, ['key', 'data']);
+
+    $key = (string) $p['key'];
+    $prefix = IMAGE_SETTINGS[$key] ?? null;
+    if ($prefix === null) throw new RuntimeException('That setting does not hold an image.');
+
+    if (!preg_match('~^data:image/[\w.+-]+;base64,~', (string) $p['data'], $m)) {
+        throw new RuntimeException('That file is not an image. Choose a PNG, JPG, GIF or WEBP file.');
+    }
+    $binary = base64_decode(substr((string) $p['data'], strlen($m[0])), true);
+    if ($binary === false || $binary === '') {
+        throw new RuntimeException('The image could not be read. Open it, save it again and retry.');
+    }
+    if (strlen($binary) > IMAGE_MAX_BYTES) {
+        throw new RuntimeException('That image is bigger than 2 MB. Please use a smaller one.');
+    }
+
+    // The file's own header decides the format, not the type the browser
+    // declared and not the file name.
+    $info = getimagesizefromstring($binary);
+    $ext = $info ? (IMAGE_TYPES[$info[2]] ?? null) : null;
+    if ($ext === null) {
+        throw new RuntimeException('Unsupported image format. Save it as PNG, JPG, GIF or WEBP.');
+    }
+
+    if (!is_dir(UPLOAD_DIR) && !mkdir(UPLOAD_DIR, 0775, true) && !is_dir(UPLOAD_DIR)) {
+        throw new RuntimeException('Cannot create the upload folder. Check public/assets/uploads permissions.');
+    }
+
+    $name = newId($prefix) . '.' . $ext;
+    if (file_put_contents(UPLOAD_DIR . DIRECTORY_SEPARATOR . $name, $binary) === false) {
+        throw new RuntimeException('Cannot save the image file. Check public/assets/uploads permissions.');
+    }
+
+    $previous = getSetting($key);
+    $url = UPLOAD_URL . '/' . $name;
+    setSetting($key, $url);
+    deleteUploadedImage($previous);
+
+    return ['key' => $key, 'url' => $url, 'fileName' => $name];
+}
+
+/**
+ * Deletes a superseded branding image, but only when it is one of ours. The
+ * setting can equally hold a URL somebody typed in by hand, and neither an
+ * external address nor a stray "../" in one may reach unlink().
+ */
+function deleteUploadedImage(string $url): void
+{
+    if (!str_starts_with($url, UPLOAD_URL . '/')) return;
+
+    $path = UPLOAD_DIR . DIRECTORY_SEPARATOR . basename($url);
+    if (is_file($path)) @unlink($path);
+}
+
+/**
+ * The watermark opacity as a number the CSS can use, clamped to the readable
+ * range. Applied on read rather than on save so that a value already in the
+ * table - typed in before the bound existed, or restored from a backup -
+ * cannot make a page unreadable either.
+ */
+function watermarkOpacity(): float
+{
+    $value = (float) num(getSetting('WatermarkOpacity', '0.20'));
+    return round(max(WATERMARK_MIN_OPACITY, min(WATERMARK_MAX_OPACITY, $value)), 3);
+}
+
+/**
+ * A branding URL that is safe to drop inside a CSS url(), or '' if it is not.
+ *
+ * The SPA gets these settings as JSON and can escape them at the point of use,
+ * but login.php has no session to ask and renders its watermark into a <style>
+ * block server-side. CSS nested in HTML has two escaping rules that do not
+ * compose - htmlspecialchars() does not neutralise a quote inside url(), and
+ * entities are not decoded inside <style> - so anything that could end the
+ * url() token or the block around it is refused outright instead. These
+ * settings are free text: the field takes a hand-typed URL as well as an
+ * upload. '' is what the caller draws when no watermark is configured anyway.
+ */
+function cssSafeImageUrl(string $url): string
+{
+    $url = trim($url);
+    if ($url === '' || preg_match('~[\s"\'()<>{};\\\\]~', $url)) return '';
+
+    if (str_starts_with($url, UPLOAD_URL . '/')) return str_contains($url, '..') ? '' : $url;
+
+    return preg_match('~^https?://~i', $url) ? $url : '';
+}
+
+/* ==========================================================================
  * Backup & restore
  * ======================================================================== */
 
@@ -72,32 +261,9 @@ function runBackup(string $type, string $userEmail): array
     $name = 'PayrollDB_Backup_' . $stamp . '_' . random_int(100, 999) . '.sql';
     $path = BACKUP_DIR . DIRECTORY_SEPARATOR . $name;
 
-    $fh = fopen($path, 'wb');
-    if (!$fh) throw new RuntimeException('Cannot write backup file. Check php/backups permissions.');
+    BackupRepo::dumpTo($path, BACKUP_TABLES, $stamp);
+    BackupRepo::register(newId('BAK'), $name, $userEmail, $type);
 
-    fwrite($fh, "-- Digos Payroll backup $stamp\nSET FOREIGN_KEY_CHECKS=0;\n");
-    $pdo = DB::pdo();
-    foreach (BACKUP_TABLES as $table) {
-        fwrite($fh, "\nDELETE FROM `$table`;\n");
-        $st = $pdo->query("SELECT * FROM `$table`");
-        while ($row = $st->fetch()) {
-            $cols = '`' . implode('`,`', array_keys($row)) . '`';
-            $vals = implode(',', array_map(
-                fn($v) => $v === null ? 'NULL' : $pdo->quote((string) $v), array_values($row)));
-            fwrite($fh, "INSERT INTO `$table` ($cols) VALUES ($vals);\n");
-        }
-    }
-    fwrite($fh, "\nSET FOREIGN_KEY_CHECKS=1;\n");
-    fclose($fh);
-
-    $backupId = newId('BAK');
-    DB::insert('Backup', [
-        'BackupID' => $backupId,
-        'FileID' => $name,                      // file name doubles as the id
-        'FileName' => $name,
-        'User' => $userEmail ?: 'system',
-        'Type' => $type,
-    ]);
     return ['fileId' => $name, 'fileName' => $name];
 }
 
@@ -113,7 +279,7 @@ function apiListBackups(array $p, array $user): array
     return array_map(function ($b) {
         $b['Url'] = 'download.php?id=' . urlencode($b['FileID']);
         return $b;
-    }, DB::rows('SELECT * FROM Backup ORDER BY Timestamp DESC'));
+    }, BackupRepo::listAll());
 }
 
 /**
@@ -123,7 +289,7 @@ function apiListBackups(array $p, array $user): array
 function apiRestoreBackup(array $p, array $user): array
 {
     requireFields($p, ['FileID']);
-    $entry = DB::row('SELECT * FROM Backup WHERE FileID = ?', [$p['FileID']]);
+    $entry = BackupRepo::find($p['FileID']);
     if (!$entry) throw new RuntimeException('Unknown backup file.');
 
     $path = BACKUP_DIR . DIRECTORY_SEPARATOR . basename($entry['FileName']);
@@ -131,14 +297,7 @@ function apiRestoreBackup(array $p, array $user): array
 
     runBackup('Pre-restore safety', $user['Email']);
 
-    $sql = file_get_contents($path);
-    DB::tx(function () use ($sql) {
-        foreach (explode(";\n", $sql) as $statement) {
-            $statement = trim($statement);
-            if ($statement === '' || str_starts_with($statement, '--')) continue;
-            DB::pdo()->exec($statement);
-        }
-    });
+    BackupRepo::restoreFrom($path);
     settingsMap(true);
     return ['restored' => BACKUP_TABLES];
 }

@@ -2,52 +2,129 @@
 /**
  * ============================================================================
  * Auth.php - Email/password authentication, role-based access control,
- * session timeout and the audit-trail writer. Mirrors src/Auth.gs, with
- * Google sign-in replaced by PHP sessions + bcrypt passwords.
+ * session timeout and the audit-trail writer. PHP sessions + bcrypt passwords.
  * ============================================================================
  */
 
 declare(strict_types=1);
 
-/** Permission matrix. '*' grants everything (Administrator only). */
+/**
+ * Permission matrix. '*' grants everything (Admin only).
+ *
+ * Phase 2 replaced the six original roles with the seven the phase plan
+ * defines. It was a remap of intent rather than a rename - migration 0016
+ * carries the old-to-new mapping and the reasoning for each.
+ *
+ * These are ACTIONS ONLY. No scope is baked in here: which offices a user may
+ * see is ScopeGrants, applied by Digos\Repo\ScopeGateway. Holding
+ * 'payroll.view' says you may look at payrolls, never at which ones - keeping
+ * the two separate is what lets one Pre-Auditor cover two offices and another
+ * cover one without inventing a role per office.
+ *
+ * 'employee.sensitive' is the Tier 2 gate added when migration 0015 split the
+ * restricted columns out. Note who does NOT hold it: an Encoder prepares
+ * payrolls without ever reading a rate, because the server computes from the
+ * rate rather than being handed one.
+ */
 const PERMISSIONS = [
-    'Administrator' => ['*'],
+    'Admin' => ['*'],
 
-    'HR' => [
+    // HRMO owns the employee record, including the restricted tier, and the
+    // office structure. No payroll authority at all.
+    'HRMO' => [
         'dashboard.view',
-        'employee.view', 'employee.edit',
+        'employee.view', 'employee.edit', 'employee.sensitive',
         'office.view', 'office.edit',
         'timekeeper.view', 'timekeeper.edit',
         'payroll.view', 'period.view',
+        // HRMO owns the authority documents for the same reason it owns the
+        // employee record: a memorandum, a bio exemption and a travel order are
+        // personnel instruments, and the contract is the engagement itself.
+        'document.view', 'document.edit', 'document.delete',
+        'contract.view', 'contract.edit',
+        'shift.view', 'shift.edit',
+        'dtr.view', 'dtr.edit', 'dtr.import',
+        'calendar.view', 'calendar.edit',
+        'attachment.view', 'attachment.edit',
         'report.view', 'print.run',
+        // Bulk master-data import. Held here and nowhere else below, because
+        // the records it loads - employees, offices, timekeepers - are the ones
+        // this role already owns one at a time. It widens no scope: the
+        // importer checks the target permission as well, so this grants
+        // nothing HRMO could not already type into a form.
+        'data.import',
     ],
 
-    'Payroll Officer' => [
+    // Prepares and submits; never approves. The segregation of duties this
+    // project exists to enforce starts as the absence of 'payroll.approve'
+    // here, and is enforced again per payroll in payrollTransition().
+    'Payroll In-Charge' => [
         'dashboard.view',
-        'employee.view',
+        'employee.view', 'employee.sensitive',
         'office.view', 'timekeeper.view',
         'period.view', 'period.edit',
         'payroll.view', 'payroll.edit', 'payroll.submit',
+        // Reads the documents a line is justified by; does not issue them.
+        'document.view', 'contract.view', 'shift.view',
+        'dtr.view', 'dtr.edit', 'dtr.import',
+        'calendar.view', 'attachment.view', 'attachment.edit',
         'report.view', 'print.run',
     ],
 
-    'Accounting' => [
+    // Verifies and approves; cannot create or edit. Reads the restricted tier
+    // because checking a daily rate against the contract is the job.
+    'Pre-Auditor' => [
         'dashboard.view',
-        'employee.view', 'office.view',
+        'employee.view', 'employee.sensitive',
+        'office.view',
         'period.view', 'payroll.view', 'payroll.approve', 'payroll.release',
+        // The Phase 7 reviewer verbs: suspend, settle and return-to-preparer.
+        // Grouped under one permission because all three are the same
+        // judgment call - approving is the only one that needs its own,
+        // since it is the one act with no undo that matters.
+        'payroll.suspend',
+        // The pre-audit is conducted against these. Checking a daily rate
+        // against the contract in force is the job, and from Phase 6 so is
+        // checking a manual DTR entry against a covering bio exemption.
+        'document.view', 'contract.view', 'shift.view',
+        // The pre-audit reads the day rows a payroll line was derived from.
+        'dtr.view', 'calendar.view', 'attachment.view',
         'report.view', 'print.run',
     ],
 
-    'Timekeeper' => [
+    // Keys the payroll. Deliberately without 'employee.sensitive'.
+    'Encoder' => [
         'dashboard.view',
         'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view', 'payroll.edit', 'payroll.submit',
+        // Sees the memo authorising the overtime being keyed, and the shift
+        // that says what late means. No contract access - that is the rate,
+        // and this role deliberately has no route to the restricted tier.
+        // Keying the DTR grid is the encoder's day job.
+        'document.view', 'shift.view',
+        'dtr.view', 'dtr.edit', 'calendar.view', 'attachment.view', 'attachment.edit',
         'print.run',
     ],
 
-    'Viewer' => [
+    // Sees their own office's records; no editing, no approval. What makes the
+    // role useful is the scope grant, not the permission list.
+    'Office Head' => [
+        'dashboard.view',
+        'employee.view', 'office.view', 'timekeeper.view',
+        'period.view', 'payroll.view',
+        'document.view', 'shift.view', 'dtr.view', 'calendar.view', 'attachment.view',
+        'report.view', 'print.run',
+    ],
+
+    // COA liaison. Read-only oversight, and the audit log with it.
+    'Internal Auditor' => [
         'dashboard.view', 'employee.view', 'office.view', 'timekeeper.view',
-        'period.view', 'payroll.view', 'report.view',
+        'period.view', 'payroll.view', 'report.view', 'log.view',
+        // Read-only oversight extends to the documents an audit is conducted
+        // against, contracts included - the whole point of the role is to be
+        // able to check the same things a pre-auditor checked.
+        'document.view', 'contract.view', 'shift.view', 'dtr.view',
+        'calendar.view', 'attachment.view',
     ],
 ];
 
@@ -160,6 +237,8 @@ function apiGetSession(array $p, array $user): array
             'governmentName' => getSetting('GovernmentName', 'CITY GOVERNMENT OF DIGOS'),
             'subtitle' => getSetting('GovernmentSubtitle', ''),
             'logoUrl' => getSetting('OfficeLogoUrl', ''),
+            'watermarkUrl' => getSetting('WatermarkUrl', ''),
+            'watermarkOpacity' => watermarkOpacity(),
             'theme' => getSetting('SystemTheme', 'light'),
             'maxEmployeesPerPayroll' => (int) num(getSetting('MaxEmployeesPerPayroll', '15')),
             'sessionTimeoutMinutes' => (int) num(getSetting('SessionTimeoutMinutes', '30')),

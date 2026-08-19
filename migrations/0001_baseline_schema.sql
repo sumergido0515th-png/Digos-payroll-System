@@ -1,13 +1,15 @@
 -- ============================================================================
--- Digos City Government - Employee Payroll Management System (PHP/MySQL)
--- Database schema + first-run seed data.
---   mysql -u root -p < schema.sql
--- Column names deliberately match the frontend field names (PascalCase).
+-- 0001_baseline_schema.sql
+--
+-- Faithful record of the schema as it existed before the phase plan began
+-- (previously schema.sql). Reproduced verbatim apart from the CREATE DATABASE
+-- and USE statements, which the migration runner handles.
+--
+-- Do not "improve" this file. It is the baseline every later migration is
+-- diffed against, and it has already been applied to live databases -
+-- tools/migrate.php verifies its checksum and will refuse to run if it
+-- changes. Corrections belong in a new numbered migration.
 -- ============================================================================
-
-CREATE DATABASE IF NOT EXISTS digos_payroll
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE digos_payroll;
 
 CREATE TABLE IF NOT EXISTS Employees (
   EmployeeID     VARCHAR(40) PRIMARY KEY,

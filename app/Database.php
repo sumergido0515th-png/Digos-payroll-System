@@ -10,6 +10,7 @@ declare(strict_types=1);
 final class DB
 {
     private static ?PDO $pdo = null;
+    private static int $txDepth = 0;
 
     /** Returns the shared PDO connection (lazy, exceptions on). */
     public static function pdo(): PDO
@@ -23,6 +24,10 @@ final class DB
                     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                     PDO::ATTR_EMULATE_PREPARES   => false,
+                    // Rejects out-of-range and mistyped values instead of
+                    // silently coercing them - see DB_SQL_MODE in config.php.
+                    PDO::MYSQL_ATTR_INIT_COMMAND =>
+                        "SET SESSION sql_mode = '" . DB_SQL_MODE . "'",
                 ]
             );
         }
@@ -81,11 +86,33 @@ final class DB
         return self::exec("UPDATE `$table` SET $sets WHERE `$keyCol` = ?", $params);
     }
 
-    /** Runs a callback inside a transaction (commit on success, rollback on throw). */
+    /**
+     * Runs a callback inside a transaction (commit on success, rollback on
+     * throw). Reentrant: a call made while one is already open joins it rather
+     * than opening a second - PDO has no nested transactions, and
+     * beginTransaction() on top of an open one throws "There is already an
+     * active transaction". The outer call alone owns begin/commit/rollback; an
+     * exception from an inner call simply propagates to it, which is exactly
+     * the all-or-nothing behaviour an outer transaction is for. Repositories
+     * such as EmployeeRepo::save() call tx() on their own so a direct save
+     * still gets one, and this is what lets ImportRepo wrap a whole batch of
+     * those same saves in a single transaction without either side knowing
+     * about the other.
+     */
     public static function tx(callable $fn): mixed
     {
+        if (self::$txDepth > 0) {
+            self::$txDepth++;
+            try {
+                return $fn();
+            } finally {
+                self::$txDepth--;
+            }
+        }
+
         $pdo = self::pdo();
         $pdo->beginTransaction();
+        self::$txDepth = 1;
         try {
             $out = $fn();
             $pdo->commit();
@@ -93,6 +120,8 @@ final class DB
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
+        } finally {
+            self::$txDepth = 0;
         }
     }
 }

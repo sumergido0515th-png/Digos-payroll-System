@@ -1,0 +1,13 @@
+# Migration files are plain .sql - Apache serves them as text rather than
+# executing them. They disclose the full schema and the seed administrator
+# account, so they must not be readable over HTTP.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+Options -Indexes

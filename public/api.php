@@ -64,11 +64,65 @@ const ROUTES = [
     'apiDeletePayroll' => ['payroll.edit', 'Payroll', 'DELETE_PAYROLL'],
     'apiSubmitPayroll' => ['payroll.submit', 'Payroll', 'SUBMIT_PAYROLL'],
     'apiApprovePayroll' => ['payroll.approve', 'Payroll', 'APPROVE_PAYROLL'],
-    'apiReturnPayroll' => ['payroll.approve', 'Payroll', 'RETURN_PAYROLL'],
+    'apiReturnPayroll' => ['payroll.suspend', 'Payroll', 'RETURN_PAYROLL'],
     'apiReleasePayroll' => ['payroll.release', 'Payroll', 'RELEASE_PAYROLL'],
     'apiCancelPayroll' => ['payroll.edit', 'Payroll', 'CANCEL_PAYROLL'],
     'apiUndoLast' => ['payroll.edit', 'Payroll', 'UNDO'],
     'apiEmailPayslips' => ['payroll.release', 'Payroll', 'EMAIL_PAYSLIPS'],
+
+    // Workflow (Phase 7): suspension, settlement and the print sub-states.
+    'apiSuspendPayroll' => ['payroll.suspend', 'Payroll', 'SUSPEND_PAYROLL'],
+    'apiSettleSuspension' => ['payroll.suspend', 'Suspensions', 'SETTLE_SUSPENSION'],
+    'apiListSuspensions' => ['payroll.view', 'Suspensions', ''],
+    'apiQueueForPrinting' => ['print.run', 'Payroll', 'QUEUE_FOR_PRINTING'],
+    'apiMarkPrinted' => ['print.run', 'Payroll', 'MARK_PRINTED'],
+    'apiGetWorklist' => ['payroll.approve', 'PreAudit', ''],
+
+    // Documents (Phase 3)
+    'apiListMemoranda' => ['document.view', 'Memorandum', ''],
+    'apiGetMemorandum' => ['document.view', 'Memorandum', ''],
+    'apiSaveMemorandum' => ['document.edit', 'Memorandum', 'SAVE_MEMORANDUM'],
+    'apiDeleteMemorandum' => ['document.delete', 'Memorandum', 'DELETE_MEMORANDUM'],
+    'apiListBioExemptions' => ['document.view', 'BioExemptions', ''],
+    'apiSaveBioExemption' => ['document.edit', 'BioExemptions', 'SAVE_BIO_EXEMPTION'],
+    'apiDeleteBioExemption' => ['document.delete', 'BioExemptions', 'DELETE_BIO_EXEMPTION'],
+    'apiListTravelOrders' => ['document.view', 'TravelOrders', ''],
+    'apiSaveTravelOrder' => ['document.edit', 'TravelOrders', 'SAVE_TRAVEL_ORDER'],
+    'apiDeleteTravelOrder' => ['document.delete', 'TravelOrders', 'DELETE_TRAVEL_ORDER'],
+
+    // Work shifts and contracts are versioned: saving supersedes, never
+    // overwrites, so there is no delete route for either.
+    'apiListWorkShifts' => ['shift.view', 'WorkShifts', ''],
+    'apiGetWorkShiftHistory' => ['shift.view', 'WorkShifts', ''],
+    'apiSaveWorkShift' => ['shift.edit', 'WorkShifts', 'SAVE_WORK_SHIFT'],
+    'apiListContracts' => ['contract.view', 'Contracts', ''],
+    'apiGetContractHistory' => ['contract.view', 'Contracts', ''],
+    'apiSaveContract' => ['contract.edit', 'Contracts', 'SAVE_CONTRACT'],
+    'apiAmendContract' => ['contract.edit', 'Contracts', 'AMEND_CONTRACT'],
+
+    // Daily time records (Phase 3B)
+    'apiGetDtrGrid' => ['dtr.view', 'DtrDays', ''],
+    'apiGetDtrTotals' => ['dtr.view', 'DtrDays', ''],
+    'apiSaveDtrDays' => ['dtr.edit', 'DtrDays', 'SAVE_DTR_DAYS'],
+    'apiDeleteDtrDay' => ['dtr.edit', 'DtrDays', 'DELETE_DTR_DAY'],
+    'apiImportBiometricLogs' => ['dtr.import', 'DtrDays', 'IMPORT_BIOMETRIC'],
+
+    // Calendar and resolvers (Phase 4)
+    'apiListHolidays' => ['calendar.view', 'Holidays', ''],
+    'apiListHolidayPayRules' => ['calendar.view', 'HolidayPayRules', ''],
+    'apiSaveHoliday' => ['calendar.edit', 'Holidays', 'SAVE_HOLIDAY'],
+    'apiDeleteHoliday' => ['calendar.edit', 'Holidays', 'DELETE_HOLIDAY'],
+    'apiResolveDay' => ['dtr.view', 'Resolvers', ''],
+
+    // Attachments and the coverage matrix (Phase 5)
+    'apiListAttachments' => ['attachment.view', 'Attachments', ''],
+    'apiGetAttachment' => ['attachment.view', 'Attachments', ''],
+    'apiUploadAttachment' => ['attachment.edit', 'Attachments', 'UPLOAD_ATTACHMENT'],
+    'apiDeleteAttachment' => ['attachment.edit', 'Attachments', 'DELETE_ATTACHMENT'],
+    'apiGetCoverageMatrix' => ['attachment.view', 'Coverage', ''],
+
+    // Pre-audit (Phase 6)
+    'apiRunPreAudit' => ['payroll.view', 'PreAudit', ''],
 
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
@@ -81,9 +135,26 @@ const ROUTES = [
     'apiGetRoles' => ['user.manage', 'Users', ''],
     'apiGetLogs' => ['log.view', 'Logs', ''],
 
+    // Scope grants. Every mutation is audited: this is the table that decides
+    // who can see which office's payroll, so a change to it is exactly the kind
+    // of thing an auditor asks about later.
+    'apiListScopeGrants' => ['scope.manage', 'ScopeGrants', ''],
+    'apiGetScopeDimensions' => ['scope.manage', 'ScopeGrants', ''],
+    'apiSaveScopeGrant' => ['scope.manage', 'ScopeGrants', 'SAVE_SCOPE_GRANT'],
+    'apiDeleteScopeGrant' => ['scope.manage', 'ScopeGrants', 'DELETE_SCOPE_GRANT'],
+
+    // Bulk master-data import. 'data.import' reaches the screen; each entity's
+    // own permission is checked again inside, so importing employees still
+    // needs 'employee.edit'. Preview writes nothing and is therefore unlogged;
+    // the commit records the attempt here and its outcome from inside.
+    'apiGetImportTypes' => ['data.import', 'Import', ''],
+    'apiPreviewImport' => ['data.import', 'Import', ''],
+    'apiCommitImport' => ['data.import', 'Import', 'IMPORT_DATA'],
+
     // Settings & backup
     'apiGetSettings' => ['settings.view', 'Settings', ''],
     'apiSaveSettings' => ['settings.edit', 'Settings', 'SAVE_SETTINGS'],
+    'apiUploadImageSetting' => ['settings.edit', 'Settings', 'UPLOAD_IMAGE'],
     'apiBackupNow' => ['backup.run', 'Backup', 'BACKUP'],
     'apiListBackups' => ['backup.run', 'Backup', ''],
     'apiRestoreBackup' => ['backup.run', 'Backup', 'RESTORE'],
@@ -111,7 +182,7 @@ try {
     $data = $action($payload, $user);
 
     if ($logAction !== '') {
-        $summary = json_encode($payload, JSON_UNESCAPED_UNICODE) ?: '';
+        $summary = json_encode(auditSummary($payload), JSON_UNESCAPED_UNICODE) ?: '';
         writeLog($user['Email'], $logAction, $module, mb_substr($summary, 0, 400));
     }
     echo json_encode(ok($data));

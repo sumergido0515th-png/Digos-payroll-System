@@ -2,7 +2,7 @@
 /**
  * ============================================================================
  * Helpers.php - Shared helpers: envelopes, validation, formatting,
- * identifiers and amount-in-words. Mirrors src/Utilities.gs.
+ * identifiers and amount-in-words.
  * ============================================================================
  */
 
@@ -52,6 +52,18 @@ function fmtDate(mixed $d, string $format = 'm/d/Y'): string
     }
 }
 
+/** Whether a birthdate makes someone a senior citizen under RA 9994 (60 or older). */
+function isSeniorCitizen(mixed $birthdate): bool
+{
+    if (!$birthdate) return false;
+    try {
+        $dob = new DateTime((string) $birthdate);
+        return $dob->diff(new DateTime())->y >= 60;
+    } catch (Throwable) {
+        return false;
+    }
+}
+
 /** Builds "LAST, First M. Suffix" from an employee record. */
 function fullName(array $e): string
 {
@@ -73,13 +85,62 @@ function newId(string $prefix): string
         . '-' . random_int(100, 999);
 }
 
-/** Throws when a required field is missing/blank. */
+/**
+ * Throws when a required field is missing/blank.
+ *
+ * Arrays are checked for emptiness rather than cast. Casting one to a string
+ * yields "Array" - which is not empty, so an empty list of payroll lines or DTR
+ * days would have passed this check while emitting a warning. That went
+ * unnoticed until Phase 3B required its first array field.
+ */
 function requireFields(array $p, array $fields): void
 {
-    $missing = array_filter($fields, fn($f) => !isset($p[$f]) || trim((string) $p[$f]) === '');
+    $missing = array_filter($fields, function ($f) use ($p) {
+        if (!isset($p[$f])) return true;
+        return is_array($p[$f]) ? $p[$f] === [] : trim((string) $p[$f]) === '';
+    });
+
     if ($missing) {
         throw new RuntimeException('Required field(s) missing: ' . implode(', ', $missing));
     }
+}
+
+/**
+ * Payload keys never written to the audit log, whatever action carries them.
+ *
+ * `Password` is sent twice in this codebase: apiApprovePayroll's
+ * re-authentication step, and apiSaveUser's password change. Both actions are
+ * logged (APPROVE_PAYROLL, SAVE_USER), so both left the caller's plaintext
+ * password sitting in Logs.Details - a table `log.view` lets several roles
+ * read - until this list existed. A named allowlist rather than a fuzzy
+ * "looks like a secret" check, so what is redacted is a decision on record
+ * rather than a guess: the next field that needs this belongs here, stated,
+ * not inferred from a pattern that might miss it or over-match something
+ * that was never a secret.
+ *
+ * Matched at the top level of the payload only. No route nests a secret
+ * inside an array field today; if one ever does, this is the boundary it
+ * would cross, and recursion is not here because that case does not exist.
+ */
+const SENSITIVE_PAYLOAD_KEYS = ['Password'];
+
+/**
+ * A payload reduced to what belongs in the audit log.
+ *
+ * An uploaded image arrives as an inline data: URL, and the log stores the
+ * first 400 characters of the payload - which would be 400 characters of
+ * base64 telling a reviewer nothing, in place of the fields that matter.
+ */
+function auditSummary(array $payload): array
+{
+    foreach ($payload as $key => $value) {
+        if (in_array($key, SENSITIVE_PAYLOAD_KEYS, true)) {
+            $payload[$key] = '<redacted>';
+        } elseif (is_string($value) && str_starts_with($value, 'data:')) {
+            $payload[$key] = '<inline data, ' . strlen($value) . ' bytes>';
+        }
+    }
+    return $payload;
 }
 
 /** Validates an email address shape. */

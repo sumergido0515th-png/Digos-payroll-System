@@ -173,11 +173,61 @@ function can(perm) {
 /** Page name -> topbar title. */
 var PAGE_TITLES = {
   dashboard: 'Dashboard', employees: 'Employees', payroll: 'Payroll Transactions',
+  documents: 'Authority Documents', dtr: 'Daily Time Records', coverage: 'Coverage & Attachments', preaudit: 'Pre-Audit Worklist',
   timekeepers: 'Timekeepers', departments: 'Departments & Offices',
   periods: 'Payroll Period', reports: 'Payroll Reports', print: 'Print Payroll',
   users: 'User Management', logs: 'Audit Logs', settings: 'Settings',
-  backup: 'Backup & Restore'
+  import: 'Import Data', backup: 'Backup & Restore'
 };
+
+/**
+ * Pages that show the office watermark behind their content. The working
+ * screens are left clean on purpose: a payroll grid is dense enough without a
+ * seal behind it, and this is the list to add to if that changes.
+ */
+var WATERMARK_PAGES = ['dashboard'];
+
+/**
+ * Applies the uploaded branding to the shell: the logo into the sidebar seal,
+ * and the one uploaded watermark photo into every surface that echoes it -
+ * the watermark layer itself, a faint wash at the foot of the sidebar, and
+ * the dashboard's hero banner. All three read the same custom property
+ * pattern (app.css applies each surface's own opacity/fade) so one upload
+ * lights up everywhere consistently instead of needing a separate asset per
+ * surface.
+ *
+ * Both settings are optional and default to empty, so an installation that
+ * has uploaded neither keeps the placeholder icon and a plain background.
+ */
+function applyBranding(settings) {
+  settings = settings || {};
+
+  if (settings.logoUrl) {
+    var seal = document.getElementById('brand-seal');
+    // has-logo swaps the placeholder icon's circle for a larger square frame -
+    // see the note in app.css.
+    seal.classList.add('has-logo');
+    seal.innerHTML = '<img src="' + esc(settings.logoUrl) + '" alt="Office logo">';
+  }
+
+  var url = settings.watermarkUrl ? 'url("' + encodeURI(settings.watermarkUrl) + '")' : 'none';
+
+  document.getElementById('watermark').style.setProperty('--watermark-url', url);
+  // The server clamps this to a range that keeps page text readable; the
+  // fallback matches WatermarkOpacity's seeded default.
+  document.body.style.setProperty('--watermark-opacity',
+    String(settings.watermarkOpacity || 0.2));
+
+  var sidebar = document.getElementById('sidebar');
+  sidebar.classList.toggle('has-photo', !!settings.watermarkUrl);
+  sidebar.style.setProperty('--sidebar-photo-url', url);
+
+  var hero = document.getElementById('dash-hero');
+  if (hero) {
+    hero.classList.toggle('has-photo', !!settings.watermarkUrl);
+    hero.style.setProperty('--dash-photo-url', url);
+  }
+}
 
 /** Activates a page and runs its module's init(). */
 function showPage(name) {
@@ -195,6 +245,7 @@ function showPage(name) {
     a.classList.toggle('active', a.dataset.page === name);
   });
   document.getElementById('page-title').textContent = PAGE_TITLES[name] || name;
+  document.body.classList.toggle('watermark-on', WATERMARK_PAGES.indexOf(name) >= 0);
   document.body.classList.remove('sidebar-open');
   if (Pages[name] && Pages[name].init) Pages[name].init();
 }
@@ -245,12 +296,20 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // Theme (persisted locally per device).
-  var theme = localStorage.getItem('dcpms-theme') || 'light';
-  document.documentElement.setAttribute('data-theme', theme);
+  // Theme (persisted locally per device). data-bs-theme has to move with
+  // data-theme: it is what repoints Bootstrap's own body/muted/border colours,
+  // and without it the framework keeps painting near-black text on our dark
+  // surfaces. Pages that draw their own text (charts) listen for themechange.
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    document.documentElement.setAttribute('data-bs-theme', t);
+    window.dispatchEvent(new CustomEvent('themechange', { detail: t }));
+  }
+  App.applyTheme = applyTheme;
+  applyTheme(localStorage.getItem('dcpms-theme') || 'light');
   document.getElementById('btn-theme').onclick = function () {
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
+    applyTheme(next);
     localStorage.setItem('dcpms-theme', next);
   };
 
@@ -259,6 +318,19 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.innerWidth <= 992) document.body.classList.toggle('sidebar-open');
     else document.body.classList.toggle('sidebar-hidden');
   };
+
+  // A few pixels of parallax on the watermark photo as the pointer moves -
+  // only while it is actually showing, and never for a user who has asked
+  // the OS for less motion.
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var mark = document.getElementById('watermark');
+    document.getElementById('main').addEventListener('mousemove', function (e) {
+      if (!document.body.classList.contains('watermark-on')) return;
+      var x = (e.clientX / window.innerWidth - 0.5) * 16;
+      var y = (e.clientY / window.innerHeight - 0.5) * 12;
+      mark.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
+    });
+  }
 
   // Sidebar navigation.
   document.querySelectorAll('.nav-item-link[data-page]').forEach(function (a) {
@@ -279,8 +351,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (s.settings && s.settings.governmentName) {
       document.getElementById('brand-name').textContent = s.settings.governmentName;
     }
+    applyBranding(s.settings);
     if (s.settings && s.settings.theme === 'dark' && !localStorage.getItem('dcpms-theme')) {
-      document.documentElement.setAttribute('data-theme', 'dark');
+      applyTheme('dark');
     }
 
     // Hide menu items the role cannot use.

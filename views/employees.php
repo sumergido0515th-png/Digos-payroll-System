@@ -8,7 +8,7 @@
     <div class="card-body py-2">
       <div class="row g-2 align-items-end">
         <div class="col-md-3"><label class="form-label">Live Search</label>
-          <input class="form-control form-control-sm" id="emp-search" placeholder="Name, ID, position, TIN..."></div>
+          <input class="form-control form-control-sm" id="emp-search" placeholder="Name, ID, position, TIN, cash card..."></div>
         <div class="col-md-2"><label class="form-label">Office</label>
           <select class="form-select form-select-sm" id="emp-f-office"></select></div>
         <div class="col-md-2"><label class="form-label">Employment Type</label>
@@ -28,7 +28,7 @@
       <table class="table table-hover">
         <thead><tr>
           <th>Employee No.</th><th>Name</th><th>Position</th><th>Office</th>
-          <th>Type</th><th class="text-end">Daily Rate</th><th>Status</th><th></th>
+          <th>Type</th><th>Cash Card</th><th class="text-end">Daily Rate</th><th>Status</th><th></th>
         </tr></thead>
         <tbody id="emp-rows"></tbody>
       </table>
@@ -108,13 +108,14 @@ Pages.employees = (function () {
           '<td class="fw-semibold">' + esc(e.FullName) + '</td>' +
           '<td>' + esc(e.Position) + '</td><td>' + esc(e.OfficeCode) + '</td>' +
           '<td>' + esc(e.EmploymentType) + '</td>' +
+          '<td class="text-nowrap">' + (e.CashCard ? esc(e.CashCard) : '<span class="text-muted">&mdash;</span>') + '</td>' +
           '<td class="text-money">' + fmtMoney(e.DailyRate) + '</td>' +
           '<td>' + badge(e.Status) + '</td>' +
           '<td class="text-end text-nowrap">' +
           (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit(\'' + e.EmployeeID + '\')') : '') +
           (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove(\'' + e.EmployeeID + '\')', 'text-danger') : '') +
           '</td></tr>';
-      }).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No employees found.</td></tr>';
+      }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No employees found.</td></tr>';
     });
   }
 
@@ -148,6 +149,13 @@ Pages.employees = (function () {
       '<div class="col-12 fw-bold text-primary small mt-2">GOVERNMENT IDs</div>' +
       inp('TIN', 'TIN', 'text', 3) + inp('GSIS', 'GSIS', 'text', 3) +
       inp('PhilHealth', 'PhilHealth', 'text', 3) + inp('Pag-IBIG', 'PagIBIG', 'text', 3) +
+      inp('Cash Card No.', 'CashCard', 'text', 3) +
+      '<div class="col-12 fw-bold text-primary small mt-2">BENEFITS &amp; DEDUCTIONS</div>' +
+      '<div class="col-md-4 d-flex align-items-end pb-1">' +
+      '<div class="form-check"><input class="form-check-input" type="checkbox" name="SSSDeductionApproved" ' +
+      'id="emp-sss-approved"' + (e.SSSDeductionApproved ? ' checked' : '') + '>' +
+      '<label class="form-check-label" for="emp-sss-approved">Employee approved SSS deduction</label></div></div>' +
+      inp('BIR Tax Percent (%)', 'BIRTaxPercent', 'number', 4, 'step="0.01" min="0" max="100"') +
       '<div class="col-12 fw-bold text-primary small mt-2">EMPLOYMENT</div>' +
       '<div class="col-md-4"><label class="form-label">Office *</label>' +
       '<select class="form-select form-select-sm" name="OfficeCode">' +
@@ -319,21 +327,25 @@ Pages.departments = (function () {
       cols: ['OfficeCode', 'OfficeName', 'Department', 'Division', 'Function', 'OfficeHead'],
       fields: [['OfficeCode', 'Office Code *'], ['OfficeName', 'Office Name *'],
         ['Department', 'Department'], ['Division', 'Division'],
-        ['Function', 'Function'], ['OfficeHead', 'Office Head']]
+        ['Function', 'Function'], ['OfficeHead', 'Office Head'],
+        ['FunctionCode', 'Function / PPA charged', 'functions', 'FunctionCode', 'FunctionName'],
+        ['ParentOfficeCode', 'Parent Office', 'offices', 'OfficeCode', 'OfficeName']]
     },
     departments: {
       head: ['Code', 'Department Name', 'Office', 'Head', 'Status', ''],
       list: 'apiListDepartments', save: 'apiSaveDepartment', del: 'apiDeleteDepartment', key: 'DeptCode',
       cols: ['DeptCode', 'DeptName', 'OfficeCode', 'Head'],
       fields: [['DeptCode', 'Department Code *'], ['DeptName', 'Department Name *'],
-        ['OfficeCode', 'Office Code'], ['Head', 'Department Head']]
+        ['OfficeCode', 'Office Code'], ['Head', 'Department Head'],
+        ['ParentDeptCode', 'Parent Department', 'departments', 'DeptCode', 'DeptName']]
     },
     functions: {
       head: ['Code', 'Function Name', 'Description', 'Status', ''],
       list: 'apiListFunctions', save: 'apiSaveFunction', del: 'apiDeleteFunction', key: 'FunctionCode',
       cols: ['FunctionCode', 'FunctionName', 'Description'],
       fields: [['FunctionCode', 'Function Code *'], ['FunctionName', 'Function Name *'],
-        ['Description', 'Description']]
+        ['Description', 'Description'],
+        ['OwningOfficeCode', 'Owning Office', 'offices', 'OfficeCode', 'OfficeName']]
     }
   };
 
@@ -362,6 +374,16 @@ Pages.departments = (function () {
     openModal((rec[c.key] ? 'Edit ' : 'New ') + tab.replace(/s$/, ''),
       '<form id="org-form" class="row g-2">' +
       c.fields.map(function (f) {
+        // f[2] names a lookup: render a picker instead of a text box. These
+        // fields are foreign keys, and a typed code that matches no row is a
+        // constraint violation the user cannot act on - "-- none --" is the
+        // only way to clear one.
+        if (f[2]) {
+          var lk = App.lookups[f[2]] || [];
+          return '<div class="col-md-6"><label class="form-label">' + f[1] + '</label>' +
+            '<select class="form-select form-select-sm" name="' + f[0] + '">' +
+            options(lk, f[3], f[4], rec[f[0]] || '', '-- none --') + '</select></div>';
+        }
         return '<div class="col-md-6"><label class="form-label">' + f[1] + '</label>' +
           '<input class="form-control form-control-sm" name="' + f[0] +
           '" value="' + esc(rec[f[0]] || '') + '"></div>';

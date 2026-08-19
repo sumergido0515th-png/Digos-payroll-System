@@ -9,6 +9,7 @@
   --gov-accent: #f4b400;
   --bg: #f4f6fa;
   --card: #ffffff;
+  --card-rgb: 255, 255, 255;
   --text: #1f2937;
   --muted: #6b7280;
   --border: #e5e7eb;
@@ -20,6 +21,7 @@
   --gov-blue-light: #17264a;
   --bg: #0f1523;
   --card: #182136;
+  --card-rgb: 24, 33, 54;
   --text: #e5e9f2;
   --muted: #9aa4b8;
   --border: #2a3552;
@@ -42,6 +44,21 @@ body {
   z-index: 1040;
   display: flex; flex-direction: column;
   transition: transform .25s ease;
+  overflow: hidden;
+}
+/* An uploaded watermark photo echoed faintly at the foot of the rail, so the
+   sidebar reads as the same material as the hero photo behind the dashboard
+   rather than a flat panel bolted on next to it - plain opacity, not a color
+   blend (see the note on #watermark for why "natural" won over duotone).
+   z-index:-1 keeps it under the nav links and the brand seal, which are
+   normal-flow content. */
+#sidebar.has-photo::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: var(--sidebar-photo-url, none);
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 160%;
+  opacity: .14;
 }
 #sidebar .brand {
   padding: 18px 16px 14px;
@@ -72,19 +89,39 @@ body {
   border-left-color: var(--gov-accent); font-weight: 600;
 }
 .nav-item-link .material-icons { font-size: 19px; }
+/* Section labels group 17 links into scannable clusters rather than one long
+   flat list - the grouping (Overview / Payroll / People & Records /
+   Administration) mirrors how the modules actually relate to each other. */
+.nav-section-label {
+  padding: 14px 18px 4px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px;
+  color: rgba(255,255,255,.4);
+}
+.nav-section-label:first-child { padding-top: 4px; }
 #sidebar .user-box {
   padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.15);
-  font-size: 12px;
+  font-size: 12px; position: relative; z-index: 1;
 }
 #sidebar .user-box .role-badge {
   background: var(--gov-accent); color: #3a2c00;
   font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
 }
+.btn-icon-logout {
+  border: none; background: var(--gov-blue-dark); color: #fff;
+  width: 32px; height: 32px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.btn-icon-logout:hover { background: var(--gov-blue); }
+.btn-icon-logout .material-icons { font-size: 18px; }
 
 #main {
   flex: 1; margin-left: var(--sidebar-w);
   display: flex; flex-direction: column; min-width: 0;
   transition: margin-left .25s ease;
+  /* Owns the background the watermark layer blends against, and isolates so
+     that blending resolves here rather than against the page canvas. */
+  background: var(--bg); isolation: isolate;
 }
 #topbar {
   background: var(--card); border-bottom: 1px solid var(--border);
@@ -93,7 +130,65 @@ body {
 }
 #topbar h5 { margin: 0; font-weight: 700; color: var(--gov-blue); }
 [data-theme="dark"] #topbar h5 { color: #7fa4e8; }
-#page-host { padding: 20px; flex: 1; }
+/* position/z-index put the pages above the watermark layer below. */
+#page-host { padding: 20px; flex: 1; position: relative; z-index: 1; }
+
+/* ---- branding: uploaded logo & page watermark -------------------------- */
+
+/*
+ * An uploaded logo gets a bigger, square frame instead of the placeholder
+ * icon's circle. A circle is right for a single glyph but wrong for a supplied
+ * image: it crops the corners of a square crest, and fitting a square inside a
+ * circle wastes about a third of the width, so the logo lands much smaller
+ * than the space allows. Squaring the frame and dropping the padding lets the
+ * file fill its placement, and object-fit: contain keeps it undistorted
+ * whatever aspect ratio is uploaded - a wide banner letterboxes rather than
+ * being stretched or cropped.
+ */
+#sidebar .brand .seal.has-logo {
+  width: 76px; height: 76px; border-radius: 10px;
+  background: #fff; padding: 3px;
+}
+#sidebar .brand .seal.has-logo img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+}
+
+/*
+ * The watermark is its own fixed layer rather than a background on the page,
+ * for two reasons: it holds still while the dashboard scrolls, and its
+ * opacity is set independently of the content's.
+ *
+ * Readability is why it sits *behind* the cards rather than over them. Every
+ * card is opaque (var(--card)), so no figure, label or table row loses
+ * contrast whatever image is uploaded - the seal reads in the page margins
+ * and the gutters between cards, and the numbers stay exactly as legible as
+ * they are with no watermark at all. WATERMARK_MAX_OPACITY in app/Settings.php
+ * bounds the layer itself for the same reason.
+ */
+#watermark {
+  /* Inset from the content area rather than filling it, so the image has a
+     margin instead of running into the topbar and the window edges. */
+  position: fixed; inset: 76px 4vw 4vh calc(var(--sidebar-w) + 4vw);
+  background-repeat: no-repeat;
+  background-position: center;
+  /* contain, so the image is as large as its placement allows whatever shape
+     it is: a square crest ends up limited by height, a wide photo by width,
+     and neither is cropped or stretched. */
+  background-size: contain;
+  opacity: 0; transition: opacity .4s ease, transform .2s ease-out;
+  pointer-events: none; z-index: 0;
+  /* "Natural" rather than duotone (compared against a color-blend duotone in
+     the preview and chosen over it): the uploaded photo already sits in the
+     same blue-and-white range as the shell around it, so recoloring it just
+     muted its own gradient without adding anything - the plain image at a
+     slightly higher opacity than before reads more clearly. A future upload
+     in a clashing color would still be legible; it just would not be as
+     seamless as this one. */
+  background-image: var(--watermark-url, none);
+}
+body.watermark-on #watermark { opacity: var(--watermark-opacity, .3); }
+/* Sidebar collapsed: keep the margin, drop only its width. */
+body.sidebar-hidden #watermark { left: 4vw; }
 
 /* Collapsed / mobile sidebar */
 body.sidebar-hidden #sidebar { transform: translateX(-100%); }
@@ -102,6 +197,7 @@ body.sidebar-hidden #main { margin-left: 0; }
   #sidebar { transform: translateX(-100%); }
   #main { margin-left: 0; }
   body.sidebar-open #sidebar { transform: none; box-shadow: 4px 0 24px rgba(0,0,0,.35); }
+  #watermark { left: 4vw; }
 }
 
 /* ---- cards & tables ---------------------------------------------------- */
@@ -145,6 +241,19 @@ body.sidebar-hidden #main { margin-left: 0; }
 .st-Draft { background: #e7e9ef; color: #4a5165; }
 .st-Pending, .st-Closed { background: #fff3cd; color: #8a6d00; }
 .st-Approved { background: #d6e4ff; color: #0b3d91; }
+/* Status chips are the one place with a hardcoded light palette: pale fill,
+   dark ink. In dark mode both invert so the chip sits in the surface rather
+   than glowing on top of it, while keeping the same status hue. */
+[data-theme="dark"] .st-Active,
+[data-theme="dark"] .st-Open,
+[data-theme="dark"] .st-Released { background: #123a26; color: #6ee7a8; }
+[data-theme="dark"] .st-Inactive,
+[data-theme="dark"] .st-Cancelled,
+[data-theme="dark"] .st-Locked { background: #431c1c; color: #f7a4a4; }
+[data-theme="dark"] .st-Draft { background: #2a3244; color: #c2c9da; }
+[data-theme="dark"] .st-Pending,
+[data-theme="dark"] .st-Closed { background: #3d3113; color: #f0cd6a; }
+[data-theme="dark"] .st-Approved { background: #1c3163; color: #a8c4ff; }
 
 /* ---- entry grid -------------------------------------------------------- */
 #grid-table input { min-width: 58px; text-align: right; padding: 2px 6px; font-size: 13px; }
@@ -161,10 +270,162 @@ body.sidebar-hidden #main { margin-left: 0; }
 }
 .spinner-overlay.show { display: flex; }
 #toast-host { position: fixed; right: 18px; bottom: 18px; z-index: 2100; }
-.modal-content { background: var(--card); color: var(--text); border-radius: 14px; }
+/* Glass rather than solid: the dashboard behind a modal (its stat cards, its
+   watermark) stays faintly legible through the blur, so opening a form does
+   not feel like switching to a different screen. The blur is what keeps this
+   accessible regardless of what is behind it - even a busy table dissolves
+   into a soft wash at 20px, so text contrast never depends on the page
+   underneath. --card-rgb exists solely so this alpha channel is possible;
+   --card itself stays a plain hex for every other opaque surface. */
+.modal-content {
+  background: rgba(var(--card-rgb), .84);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  color: var(--text); border-radius: 14px;
+  border: 1px solid rgba(var(--card-rgb), .5);
+  box-shadow: 0 24px 60px rgba(4,14,32,.28);
+}
 .modal-header { border-color: var(--border); }
 .modal-footer { border-color: var(--border); }
+/* Lighter than Bootstrap's default .5 - the page behind should read as the
+   same dashboard, not vanish under a flat scrim, while the modal's own blur
+   still does the accessibility work of keeping its text readable. */
+.modal-backdrop { --bs-backdrop-opacity: .32; }
 .chart-box { min-height: 260px; }
 .cursor-pointer { cursor: pointer; }
 .text-money { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---- import: sky hero + stepper -----------------------------------------
+   The four-stage flow (choose a file, map its columns, review the rows,
+   commit) is a real order the screen cannot be used out of - a column can't
+   be mapped before the file is read, and nothing commits before it is
+   reviewed - so a numbered stepper is earned here rather than decorative. */
+.import-hero {
+  position: relative; overflow: hidden; border: none; color: #fff;
+  background: linear-gradient(160deg, var(--gov-blue) 0%, var(--gov-blue-dark) 65%, #071f4d 100%);
+  background-size: 200% 200%;
+  animation: importSkyDrift 18s ease-in-out infinite;
+}
+.import-hero::before {
+  content: ''; position: absolute; inset: 0; opacity: .5; pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255,255,255,.5) 50%, transparent 52%),
+    radial-gradient(1.5px 1.5px at 60% 15%, rgba(255,255,255,.4) 50%, transparent 52%),
+    radial-gradient(1.5px 1.5px at 80% 45%, rgba(255,255,255,.35) 50%, transparent 52%),
+    radial-gradient(1.5px 1.5px at 35% 60%, rgba(255,255,255,.3) 50%, transparent 52%);
+  background-size: 220px 160px;
+  animation: importSkyStars 40s linear infinite;
+}
+.import-hero .wisp {
+  position: absolute; opacity: .18; pointer-events: none; z-index: 0;
+}
+.import-hero .wisp.a { top: 8%; left: -6%; width: 46%; animation: importWisp 20s ease-in-out infinite; }
+.import-hero .wisp.b { bottom: -8%; right: -8%; width: 42%; animation: importWisp 26s ease-in-out infinite reverse; }
+@keyframes importSkyDrift {
+  0%, 100% { background-position: 0% 30%; }
+  50% { background-position: 100% 70%; }
+}
+@keyframes importSkyStars {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 220px 0, -220px 40px, 120px -80px, -140px 100px; }
+}
+@keyframes importWisp {
+  0%, 100% { transform: translate(0,0) rotate(0deg); }
+  50% { transform: translate(2%, 1.5%) rotate(1deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-hero, .import-hero::before, .import-hero .wisp { animation: none; }
+}
+.import-hero .card-body { position: relative; z-index: 1; }
+.import-hero .form-label { color: rgba(255,255,255,.75); }
+.import-hero h5 { color: #fff; font-weight: 600; }
+.import-kicker {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--gov-accent); font-weight: 700;
+}
+.import-hero .form-select { background: rgba(255,255,255,.95); }
+
+.import-stepper { display: flex; gap: 4px; position: relative; z-index: 1; padding: 14px 18px 0; }
+.import-step { display: flex; align-items: center; gap: 8px; flex: 1; }
+.import-step .n {
+  width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  background: var(--gov-blue-dark); color: #fff;
+  border: 1px solid rgba(255,255,255,.3);
+  transition: background .2s, color .2s, border-color .2s;
+}
+.import-step .t { font-size: 12.5px; color: rgba(255,255,255,.65); font-weight: 600; transition: color .2s; }
+.import-step:not(:last-child)::after {
+  content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.2); margin: 0 4px;
+}
+.import-step.done .n { background: var(--gov-accent); color: #3a2c00; border-color: var(--gov-accent); }
+.import-step.done .t { color: rgba(255,255,255,.9); }
+.import-step.current .n { background: #fff; color: var(--gov-blue-dark); border-color: #fff; }
+.import-step.current .t { color: #fff; }
+
+/* ---- import: dropzone ---------------------------------------------------- */
+.import-dropzone {
+  display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0;
+  background: rgba(255,255,255,.95); border: 1.5px dashed rgba(11,61,145,.35);
+  border-radius: 10px; padding: 9px 12px; transition: border-color .15s, background .15s;
+}
+.import-dropzone:hover, .import-dropzone.drag-over { border-color: var(--gov-accent); background: #fff; }
+.import-dropzone .material-icons { color: var(--gov-blue); font-size: 22px; }
+.import-dropzone .txt { font-size: 12.5px; line-height: 1.3; color: var(--text); }
+.import-dropzone .txt small { color: var(--muted); display: block; }
+
+/* ---- import: confidence chips & row rail ---------------------------------
+   A colored rail on the left edge of a row reads faster than scanning a
+   dense table cell by cell, and the chip repeats the same three-color
+   vocabulary the mapping table already uses. */
+.imp-confidence { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; }
+.imp-confidence .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.imp-confidence.ok { color: #0a6c3c; }
+.imp-confidence.ok .dot { background: #1fa361; }
+.imp-confidence.low { color: #8a6d00; }
+.imp-confidence.low .dot { background: #f4b400; }
+.imp-confidence.missing { color: #a32020; }
+.imp-confidence.missing .dot { background: #e14848; }
+.imp-confidence.empty { color: var(--muted); }
+.imp-confidence.empty .dot { background: var(--muted); }
+[data-theme="dark"] .imp-confidence.ok { color: #6ee7a8; }
+[data-theme="dark"] .imp-confidence.low { color: #f0cd6a; }
+[data-theme="dark"] .imp-confidence.missing { color: #f7a4a4; }
+.import-rows-table tr.row-bad { box-shadow: inset 3px 0 0 #e14848; }
+.import-rows-table tr.row-ok { box-shadow: inset 3px 0 0 #1fa361; }
+
+/* ---- dashboard hero -------------------------------------------------------
+   Where the uploaded watermark photo actually gets to be a photo: the stat
+   cards, charts and the transaction table below stay fully opaque on
+   purpose (see the note on #watermark) because that data has to stay legible
+   no matter what gets uploaded. This banner is the one place on the
+   dashboard built to carry the image at real size instead of as a faint
+   backdrop. */
+.dashboard-hero {
+  position: relative; overflow: hidden; border: none; color: #fff;
+  min-height: 96px;
+  background: linear-gradient(135deg, var(--gov-blue) 0%, var(--gov-blue-dark) 100%);
+}
+[data-theme="dark"] .dashboard-hero {
+  background: linear-gradient(135deg, var(--gov-blue-dark) 0%, #050d1f 100%);
+}
+/* Plain photo, not a color blend - see the note on #watermark. This is the
+   one surface built to carry it at near-full strength; the left-to-right
+   fade below is what keeps the greeting text legible against it. */
+.dashboard-hero.has-photo::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: var(--dash-photo-url, none);
+  background-repeat: no-repeat; background-position: center right;
+  background-size: cover;
+  opacity: .92;
+}
+/* Fades the photo out toward the left edge, where the greeting text sits, so
+   the image never has to compete with what it's sitting behind. */
+.dashboard-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--gov-blue-dark) 0%, rgba(8,44,107,.4) 42%, rgba(8,44,107,.05) 78%);
+}
+.dashboard-hero .card-body { position: relative; z-index: 1; }
+.dashboard-hero #dash-today { color: rgba(255,255,255,.75); }
 
