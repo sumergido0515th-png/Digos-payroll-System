@@ -132,6 +132,17 @@ final class FilterSpec
             'ReceivedTo' => ['op' => 'dateTo', 'column' => 'DateReceived'],
             'EffectiveFrom' => ['op' => 'dateFrom', 'column' => 'EffectivityStart'],
             'EffectiveTo' => ['op' => 'dateTo', 'column' => 'EffectivityEnd'],
+
+            // For the open-ended-memo watchlist, and useful on its own: "not
+            // touched since". UpdatedAt is ON UPDATE CURRENT_TIMESTAMP, so it
+            // means the last edit and not the last time anyone looked.
+            'UpdatedBefore' => ['op' => 'before', 'column' => 'UpdatedAt'],
+
+            // Whether the memo has been revoked. A revoked instrument is not
+            // an outstanding one, which is what keeps the watchlist from
+            // nagging about memos that were already closed out.
+            'Revoked' => ['op' => 'isNull', 'column' => 'RevokedByID'],
+
             'search' => ['op' => 'search', 'columns' => ['ControlNo', 'Subject', 'Remarks']],
         ],
 
@@ -175,6 +186,14 @@ final class FilterSpec
             'OfficeCode' => ['op' => 'in', 'column' => 'e.OfficeCode', 'options' => true],
             'ValidFrom' => ['op' => 'dateFrom', 'column' => 'ValidFrom'],
             'ValidTo' => ['op' => 'dateTo', 'column' => 'ValidTo'],
+
+            // Both ends of the EXPIRY date, which is a different question from
+            // the two above: those bound the window's start and its end
+            // separately, these bracket when it runs out. The expiring-soon
+            // watchlist needs "ValidTo between today and today + 15 days", and
+            // ValidTo alone can only express the upper half of that.
+            'ExpiresFrom' => ['op' => 'dateFrom', 'column' => 'ValidTo'],
+            'ExpiresTo' => ['op' => 'dateTo', 'column' => 'ValidTo'],
             'search' => ['op' => 'search', 'columns' => [
                 'e.LastName', 'ReasonCode', 'Reason', 'ProofType', 'ProofRef']],
         ],
@@ -521,10 +540,20 @@ final class FilterSpec
         return match ($op) {
             'exact' => ['op' => 'exact', 'column' => $facet['column'], 'values' => [$value]],
             'search' => ['op' => 'search', 'columns' => $facet['columns'], 'values' => [$value]],
-            'dateFrom', 'dateTo', 'datetimeFrom', 'datetimeTo' => [
+            'dateFrom', 'dateTo', 'datetimeFrom', 'datetimeTo', 'before' => [
                 'op' => $op,
                 'column' => $facet['column'],
                 'values' => [self::date($key, $value)],
+            ],
+
+            // A presence question rather than a value one. '0' and 'false' read
+            // as false because a checkbox posts one or the other, and treating
+            // the string '0' as true - which PHP truthiness on a non-empty
+            // string would - inverts the filter silently.
+            'isNull' => [
+                'op' => 'isNull',
+                'column' => $facet['column'],
+                'values' => [!in_array(strtolower($value), ['0', 'false', 'no'], true)],
             ],
             default => throw new InvalidArgumentException(
                 "FilterSpec facet '$key' declares an unknown op '$op'."),

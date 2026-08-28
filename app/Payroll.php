@@ -18,6 +18,7 @@
 declare(strict_types=1);
 
 use Digos\Domain\Print\PayloadHash;
+use Digos\Domain\Query\Watchlist;
 use Digos\Domain\Rules\RuleEngine;
 use Digos\Domain\Workflow\PayrollWorkflow;
 use Digos\Repo\AttachmentRepo;
@@ -823,6 +824,19 @@ function apiSettleSuspension(array $p, array $user): array
 function apiGetSuspensionFacets(array $p, array $user): array
 {
     return SuspensionRepo::facetOptionsScoped($user);
+}
+
+/**
+ * Open suspensions whose deadline has passed.
+ *
+ * Strictly before today: a suspension due today is not yet overdue, and
+ * reporting it as such on the morning of the deadline is how a list stops
+ * being trusted.
+ */
+function apiGetOverdueSuspensions(array $p, array $user): array
+{
+    return SuspensionRepo::search($user,
+        Watchlist::payload(Watchlist::SUSPENSIONS_OVERDUE, date('Y-m-d')));
 }
 
 /** Suspensions the caller may see, for the worklist and a payroll's own history. */

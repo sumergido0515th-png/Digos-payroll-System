@@ -118,6 +118,19 @@ final class FilterSql
                 $params[] = $values[0];
                 return self::column($condition['column'], $alias) . ' <= ?';
 
+            case 'before':
+                // Strictly before, unlike dateTo. "Untouched since March" means
+                // the last edit was before March, not up to and including it.
+                $params[] = $values[0];
+                return self::column($condition['column'], $alias) . ' < ?';
+
+            case 'isNull':
+                // The one condition that binds nothing. It is still a filter
+                // and not an identifier: which column may be asked about comes
+                // from FilterSpec, and the payload only chooses the direction.
+                return self::column($condition['column'], $alias)
+                    . ($values[0] ? ' IS NOT NULL' : ' IS NULL');
+
             case 'datetimeTo':
                 // "to the 16th" has to include the 16th. A DATETIME compared
                 // with '2026-08-16' is compared against midnight, so <= would
