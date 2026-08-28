@@ -6,8 +6,10 @@ pre-audit control layer being added phase by phase.
 **Read [`docs/PHASE_PLAN.md`](docs/PHASE_PLAN.md) before starting work.** It defines the phase
 order, the exit gate for each phase, and the rule that scope is frozen per phase — new ideas
 go in its Backlog section rather than into the current phase.
-[`docs/GAP_MAP.md`](docs/GAP_MAP.md) records what actually exists versus what each phase
-targets, with file and line references.
+[`docs/GAP_MAP.md`](docs/GAP_MAP.md) records what existed versus what each phase targets,
+with file and line references — but it is a **Phase 0 snapshot** (audited 2026-07-27 at
+`d777107`, when the tree had 49 routes; it now has 96). Trust it for rationale and for the
+findings that shaped the plan, not for the current shape of the tree.
 
 ## Commands
 
@@ -59,8 +61,9 @@ The third element is the audit action; `''` means read-only and unlogged.
 
 The reason is Phase 2: scope enforcement works by routing reads through a gateway that
 applies the caller's scope grants, and one direct query bypasses it silently and leaks
-another office's rows. Seven pre-existing files are grandfathered into an allowlist in that
-test. **That list may only shrink.**
+another office's rows. Four pre-existing files are grandfathered into an allowlist in that
+test — it started at seven, and `PrintDoc`, `Reports` and `Settings` have since come off it.
+**That list may only shrink.**
 
 ### Pure core, imperative shell
 
@@ -113,14 +116,20 @@ use it as the reference.
   one changed. Corrections go in a new numbered migration.
 - MySQL commits implicitly on DDL, so a failed migration cannot be rolled back. Keep each
   migration small.
-- `MaxEmployeesPerPayroll` (setting) and `PRINT_ROWS` (in `app/PrintDoc.php`) are both 15 and
-  both load-bearing for the printed form geometry. Changing one without the other breaks
-  printouts.
-- `Payroll.PreparedBy` stores a **display name**, not a user id. Segregation-of-duties checks
-  cannot be written against it until Phase 1 adds a proper foreign key.
-- `Functions` is keyed by `FunctionCode`, but `Payroll` and `Offices` store `FunctionName` as
-  a string — hence `aliasFunctionIn/Out` in `app/Helpers.php`. Phase 1 collapses this to the
-  code.
+- The printed form's row count is **15, written in five places**: `PRINT_ROWS` in
+  `app/PrintDoc.php`, `RuleEngine::PRINT_ROWS`, the `MaxEmployeesPerPayroll` fallback in each
+  of `app/Auth.php` and `app/Payroll.php`, and the seeded setting in `0001`. All five are
+  load-bearing for the printed form geometry — change one and a payroll passes pre-audit,
+  prints, and drops its last lines off the bottom of the form.
+  `tests/Architecture/PrintRowGeometryTest.php` fails if they diverge.
+- `Payroll.PreparedBy` stores a **display name**, not a user id — it is what the printed form
+  shows and must not drift. Segregation-of-duties checks read `PreparedByUser`, the foreign
+  key migration `0007` added, and never the display string beside it; see
+  `tests/Integration/SegregationOfDutiesTest.php`.
+- `Functions` is keyed by `FunctionCode`. Phase 1 (`0004`) added `FunctionCode` to `Offices`
+  and `Payroll` but did **not** drop `FunctionName` beside it: both columns still exist,
+  `Employees` still carries only `FunctionName`, and `aliasFunctionIn/Out` in
+  `app/Helpers.php` still translates between the two. The collapse to the code is unfinished.
 
 ## Working rhythm
 
