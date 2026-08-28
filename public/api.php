@@ -59,6 +59,7 @@ const ROUTES = [
     // Payroll
     'apiComputePayroll' => ['payroll.view', 'Payroll', ''],
     'apiListPayrolls' => ['payroll.view', 'Payroll', ''],
+    'apiGetPayrollFacets' => ['payroll.view', 'Payroll', ''],
     'apiGetPayroll' => ['payroll.view', 'Payroll', ''],
     'apiSavePayroll' => ['payroll.edit', 'Payroll', 'SAVE_PAYROLL'],
     'apiDeletePayroll' => ['payroll.edit', 'Payroll', 'DELETE_PAYROLL'],

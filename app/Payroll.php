@@ -215,7 +215,24 @@ function apiComputePayroll(array $p, array $user): array
 /** Lists payrolls with search + filters, newest first. */
 function apiListPayrolls(array $p, array $user): array
 {
-    return array_map('aliasFunctionOut', PayrollRepo::listScoped($user, $p));
+    return array_map('aliasFunctionOut', PayrollRepo::search($user, $p));
+}
+
+/**
+ * The choices the payroll filter bar may offer this user.
+ *
+ * A separate call rather than a field on the list response: the options do not
+ * change as the user narrows their filters - narrowing them by what is already
+ * on screen is what makes a facet impossible to widen again - and the list is
+ * re-fetched on every keystroke of the search box.
+ *
+ * Scoped in the repository, like every other read. See
+ * tests/Integration/FilterScopeTest.php for why a dropdown is a disclosure
+ * surface in its own right.
+ */
+function apiGetPayrollFacets(array $p, array $user): array
+{
+    return PayrollRepo::facetOptionsScoped($user);
 }
 
 /** One payroll with its lines. */

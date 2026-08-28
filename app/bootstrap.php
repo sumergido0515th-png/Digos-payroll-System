@@ -31,6 +31,8 @@ require_once __DIR__ . '/Domain/Print/PayloadHash.php';
 require_once __DIR__ . '/Domain/Import/SourceTable.php';
 require_once __DIR__ . '/Domain/Import/ColumnMap.php';
 require_once __DIR__ . '/Domain/Import/EntitySpec.php';
+require_once __DIR__ . '/Domain/Query/FilterSpec.php';
+require_once __DIR__ . '/Domain/Query/FilterSql.php';
 require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
 require_once __DIR__ . '/Repo/ScopeGateway.php';
 require_once __DIR__ . '/Repo/EmployeeRepo.php';
