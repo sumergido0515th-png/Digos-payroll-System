@@ -76,7 +76,9 @@ function stripComments(string $src): string
  */
 function toRepoLineEndings(string $text): string
 {
-    return str_replace("\n", "\r\n", normaliseLineEndings($text));
+    // The trailing newline is put back after the comparison-oriented trim, so
+    // the written file still ends in one the way every other file here does.
+    return str_replace("\n", "\r\n", normaliseLineEndings($text) . "\n");
 }
 
 /** Content compared for drift, insensitive to line endings and trailing space. */
