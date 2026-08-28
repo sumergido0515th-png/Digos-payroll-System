@@ -19,35 +19,54 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
 
 final class MemorandumRepo
 {
     /**
-     * Memoranda this user may see, newest issue date first.
+     * Memoranda this user may see, narrowed by the facets they asked for.
      *
-     * @param array<string, mixed> $filters OfficeCode, AuthorityType, Status, search
+     * Scope and filters compose here as everywhere: WHERE (scope) AND
+     * (filters), so a filter naming another office returns nothing rather than
+     * refusing and thereby confirming the office exists.
+     *
+     * @param array<string, mixed> $payload the API payload
+     * @return array<int, array<string, mixed>>
+     */
+    public static function search(array $user, array $payload = []): array
+    {
+        $scope = ScopeGateway::where($user, 'Memorandum', 'm.');
+        $spec = FilterSpec::fromPayload('Memorandum', $payload);
+        $filter = FilterSql::build($spec, 'm.');
+
+        return DB::rows(
+            'SELECT m.*, (SELECT COUNT(*) FROM MemorandumEmployees me
+                            WHERE me.MemoID = m.MemoID) AS CoveredCount
+               FROM Memorandum m
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec, 'm.'),
+            array_merge($scope['params'], $filter['params']));
+    }
+
+    /** @return array<string, array<int, string>> */
+    public static function facetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'Memorandum', 'Memorandum m',
+            ScopeGateway::where($user, 'Memorandum', 'm.'), 'm.');
+    }
+
+    /**
+     * Memoranda this user may see.
+     *
+     * Kept as the name the modules already call; it is search().
+     *
      * @return array<int, array<string, mixed>>
      */
     public static function listScoped(array $user, array $filters = []): array
     {
-        $scope = ScopeGateway::where($user, 'Memorandum', 'm.');
-
-        $sql = 'SELECT m.*, (SELECT COUNT(*) FROM MemorandumEmployees me
-                              WHERE me.MemoID = m.MemoID) AS CoveredCount
-                  FROM Memorandum m
-                 WHERE ' . $scope['sql'];
-        $params = $scope['params'];
-
-        foreach (['OfficeCode', 'FunctionCode', 'AuthorityType', 'Status'] as $f) {
-            if (!empty($filters[$f])) { $sql .= " AND m.`$f` = ?"; $params[] = $filters[$f]; }
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (m.ControlNo LIKE ? OR m.Subject LIKE ? OR m.Remarks LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like);
-        }
-
-        return DB::rows($sql . ' ORDER BY m.DateIssued DESC, m.ControlNo DESC', $params);
+        return self::search($user, $filters);
     }
 
     /**

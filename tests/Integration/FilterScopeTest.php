@@ -54,10 +54,19 @@ final class FilterScopeTest extends TestCase
     private const MY_PAYROLL = 'ZZF-MINE-1';
     private const THEIR_PAYROLL = 'ZZF-THEIRS-1';
 
+    private const MY_EMPLOYEE = 'EMP-ZZFILT-MINE';
+    private const THEIR_EMPLOYEE = 'EMP-ZZFILT-THEIRS';
+
     /** Distinctive so a leak through any column is recognisable in a failure. */
     private const THEIR_DEPARTMENT = 'Unseeable Division';
     private const THEIR_PREPARER = 'UNSEEABLE, Preparer';
     private const THEIR_REMARK = 'UNSEEABLE remark';
+    private const THEIR_POSITION = 'Unseeable Position';
+    private const THEIR_CONTROL_NO = 'ZZF-MEMO-UNSEEABLE';
+    private const THEIR_REASON_CODE = 'UNSEEABLE-REASON';
+    private const THEIR_TRAVEL_NO = 'ZZF-TO-UNSEEABLE';
+    private const THEIR_GROUND = 'UNSEEABLE-GROUND';
+    private const THEIR_NS_NO = 'NS-ZZFILT-THEIRS';
 
     private const ENCODER = 'zzf-encoder@digos.gov.ph';
     private const ADMIN = 'zzf-admin@digos.gov.ph';
@@ -109,6 +118,8 @@ final class FilterScopeTest extends TestCase
             self::THEIR_DEPARTMENT, 'FOR_PRE_AUDIT', self::THEIR_PREPARER, self::THEIR_REMARK,
             '2026-08-16 09:00:00', 987654.00, 987654.00]);
 
+        $this->createDocumentFixture($db);
+
         $db->prepare('INSERT INTO Users (Email, FullName, Role, OfficeCode, Status, PasswordHash)
                       VALUES (?, ?, ?, ?, ?, ?)')
             ->execute([self::ENCODER, 'Filter fixture', 'Encoder', '', 'Active', 'x']);
@@ -124,10 +135,86 @@ final class FilterScopeTest extends TestCase
             ->execute(['SG-ZZFILT-2', self::ADMIN]);
     }
 
+    /**
+     * One row of every 9B entity, in each office.
+     *
+     * The employee-scoped documents matter most here: a bio exemption, travel
+     * order and contract carry no office code of their own and are scoped
+     * through a join to Employees, so a mistake in that join does not throw -
+     * it returns the other office's people.
+     */
+    private function createDocumentFixture(\PDO $db): void
+    {
+        $employee = $db->prepare(
+            'INSERT INTO Employees (EmployeeID, EmployeeNo, LastName, FirstName, OfficeCode,
+                                    Department, EmploymentType, EmploymentTypeCode, Position, Status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+        $employee->execute([self::MY_EMPLOYEE, 'ZZF-0001', 'MINE', 'Person', self::MINE,
+            'Visible Division', 'Job Order', 'JO', 'Worker', 'Active']);
+        $employee->execute([self::THEIR_EMPLOYEE, 'ZZF-0002', 'UNSEEABLE', 'Person', self::THEIRS,
+            self::THEIR_DEPARTMENT, 'Job Order', 'JO', self::THEIR_POSITION, 'Active']);
+
+        $memo = $db->prepare(
+            'INSERT INTO Memorandum (MemoID, ControlNo, Subject, OfficeCode, AuthorityType,
+                                     EffectivityType, DateIssued, Status, Remarks)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+        $memo->execute(['MEMO-ZZFILT-MINE', 'ZZF-MEMO-1', 'Visible subject', self::MINE,
+            'Overtime', 'Range', '2026-07-01', 'Active', 'mine']);
+        $memo->execute(['MEMO-ZZFILT-THEIRS', self::THEIR_CONTROL_NO, 'UNSEEABLE subject',
+            self::THEIRS, 'Detail', 'OpenEnded', '2026-08-01', 'Active', self::THEIR_REMARK]);
+
+        $exemption = $db->prepare(
+            'INSERT INTO BioExemptions (ExemptionID, EmployeeID, ReasonCode, Reason,
+                                        ValidFrom, ValidTo, Status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)');
+
+        $exemption->execute(['BX-ZZFILT-MINE', self::MY_EMPLOYEE, 'VISIBLE',
+            'Visible reason', '2026-07-01', '2026-07-31', 'Active']);
+        $exemption->execute(['BX-ZZFILT-THEIRS', self::THEIR_EMPLOYEE, self::THEIR_REASON_CODE,
+            'UNSEEABLE reason', '2026-08-01', '2026-08-31', 'Active']);
+
+        $travel = $db->prepare(
+            'INSERT INTO TravelOrders (TravelOrderID, TravelOrderNo, EmployeeID, Destination,
+                                       Purpose, DepartDate, ReturnDate, Status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+
+        $travel->execute(['TO-ZZFILT-MINE', 'ZZF-TO-1', self::MY_EMPLOYEE, 'Davao',
+            'Visible purpose', '2026-07-05', '2026-07-06', 'Active']);
+        $travel->execute(['TO-ZZFILT-THEIRS', self::THEIR_TRAVEL_NO, self::THEIR_EMPLOYEE,
+            'UNSEEABLE destination', 'UNSEEABLE purpose', '2026-08-05', '2026-08-06', 'Active']);
+
+        $contract = $db->prepare(
+            'INSERT INTO Contracts (ContractID, EmployeeID, TypeCode, RateBasis, Rate,
+                                    StartDate, EndDate, Status, Remarks)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+        $contract->execute(['CON-ZZFILT-MINE', self::MY_EMPLOYEE, 'JO', 'Daily', 500.00,
+            '2026-01-01', '2026-12-31', 'Active', 'mine']);
+        $contract->execute(['CON-ZZFILT-THEIRS', self::THEIR_EMPLOYEE, 'JO', 'Monthly', 987654.00,
+            '2026-01-01', '2026-12-31', 'Active', self::THEIR_REMARK]);
+
+        // On THEIR payroll, so it is reachable only by someone who may read
+        // that payroll - a suspension is scoped through the batch it holds.
+        $db->prepare(
+            'INSERT INTO Suspensions (NsNo, PayrollNo, GroundCode, Particulars,
+                                      RequiredAction, Deadline, Status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([self::THEIR_NS_NO, self::THEIR_PAYROLL, self::THEIR_GROUND,
+                'UNSEEABLE particulars', 'UNSEEABLE action', '2026-09-01', 'Open']);
+    }
+
     private function removeFixture(): void
     {
         $db = TestDatabase::connect();
         $db->exec("DELETE FROM ScopeGrants WHERE GrantID LIKE 'SG-ZZFILT-%'");
+        $db->exec("DELETE FROM Suspensions WHERE NsNo LIKE 'NS-ZZFILT-%'");
+        $db->exec("DELETE FROM Contracts WHERE ContractID LIKE 'CON-ZZFILT-%'");
+        $db->exec("DELETE FROM TravelOrders WHERE TravelOrderID LIKE 'TO-ZZFILT-%'");
+        $db->exec("DELETE FROM BioExemptions WHERE ExemptionID LIKE 'BX-ZZFILT-%'");
+        $db->exec("DELETE FROM Memorandum WHERE MemoID LIKE 'MEMO-ZZFILT-%'");
+        $db->exec("DELETE FROM Employees WHERE EmployeeID LIKE 'EMP-ZZFILT-%'");
         $db->exec("DELETE FROM Payroll WHERE PayrollNo LIKE 'ZZF-%'");
         $db->exec("DELETE FROM PayrollPeriods WHERE PeriodID LIKE 'PRD-ZZFILT-%'");
         $db->exec("DELETE FROM Users WHERE Email LIKE 'zzf-%@digos.gov.ph'");
@@ -164,7 +251,9 @@ final class FilterScopeTest extends TestCase
 
         foreach ([self::THEIRS, self::THEIR_PAYROLL, self::THEIR_DEPARTMENT,
                   self::THEIR_PREPARER, self::THEIR_REMARK, self::THEIR_PERIOD,
-                  '987654'] as $secret) {
+                  self::THEIR_EMPLOYEE, self::THEIR_POSITION, self::THEIR_CONTROL_NO,
+                  self::THEIR_REASON_CODE, self::THEIR_TRAVEL_NO, self::THEIR_GROUND,
+                  self::THEIR_NS_NO, 'UNSEEABLE', '987654'] as $secret) {
             $this->assertStringNotContainsString($secret, $json,
                 "$what disclosed '$secret' from another office.");
         }
@@ -311,6 +400,140 @@ final class FilterScopeTest extends TestCase
             $this->assertSame([], $options,
                 "The '$facet' facet offered options to a user with no grants.");
         }
+    }
+
+    /* ===================================================================
+     * 9B: the same two limbs, for every remaining entity
+     * =================================================================== */
+
+    /**
+     * Every searchable entity: list endpoint, facet endpoint, and the id
+     * column its rows are recognised by.
+     *
+     * Driven from one table rather than written out six times so that adding
+     * an entity to FilterSpec without covering it here is a visible omission -
+     * the count assertion below is what makes it visible.
+     *
+     * @return array<string, array{0: string, 1: string, 2: string}>
+     */
+    public static function entities(): array
+    {
+        return [
+            'Payroll' => ['apiListPayrolls', 'apiGetPayrollFacets', 'PayrollNo'],
+            'Employees' => ['apiListEmployees', 'apiGetEmployeeFacets', 'EmployeeID'],
+            'Memorandum' => ['apiListMemoranda', 'apiGetMemorandumFacets', 'MemoID'],
+            'BioExemptions' => ['apiListBioExemptions', 'apiGetBioExemptionFacets', 'ExemptionID'],
+            'TravelOrders' => ['apiListTravelOrders', 'apiGetTravelOrderFacets', 'TravelOrderID'],
+            'Contracts' => ['apiListContracts', 'apiGetContractFacets', 'ContractID'],
+            'Suspensions' => ['apiListSuspensions', 'apiGetSuspensionFacets', 'NsNo'],
+        ];
+    }
+
+    /** apiListEmployees paginates; the others return a bare list. */
+    private function rowsOf(mixed $result): array
+    {
+        return is_array($result) && isset($result['rows']) ? $result['rows'] : $result;
+    }
+
+    /**
+     * Limb 1, for every entity: an unfiltered list discloses nothing from the
+     * other office, whichever way that entity happens to be scoped.
+     *
+     * @dataProvider entities
+     */
+    public function testEveryEntitysListIsScoped(string $list, string $facets, string $id): void
+    {
+        $rows = $this->rowsOf($list([], $this->user(self::ENCODER, 'Encoder')));
+
+        $this->assertDisclosesNothing($rows, "$list");
+    }
+
+    /**
+     * Limb 1 again, aimed deliberately: naming the other office in the filter
+     * must return empty rather than refuse.
+     *
+     * Not every entity carries an OfficeCode facet on its own table - the
+     * employee-scoped documents reach it through the join - which is exactly
+     * why this is asserted through the endpoint rather than the repository.
+     *
+     * @dataProvider entities
+     */
+    public function testFilteringEveryEntityByAnotherOfficeReturnsEmpty(
+        string $list, string $facets, string $id): void
+    {
+        $rows = $this->rowsOf(
+            $list(['OfficeCode' => self::THEIRS], $this->user(self::ENCODER, 'Encoder')));
+
+        $this->assertSame([], $rows,
+            "$list returned rows when the filter named another office.");
+    }
+
+    /**
+     * Limb 1, through the widest door: free text aimed at a string that exists
+     * only on the other office's rows.
+     *
+     * @dataProvider entities
+     */
+    public function testFreeTextCannotReachAnotherOfficeOnAnyEntity(
+        string $list, string $facets, string $id): void
+    {
+        $encoder = $this->user(self::ENCODER, 'Encoder');
+
+        foreach (['UNSEEABLE', self::THEIRS, self::THEIR_CONTROL_NO] as $term) {
+            $rows = $this->rowsOf($list(['search' => $term], $encoder));
+
+            $this->assertDisclosesNothing($rows, "$list searching for '$term'");
+        }
+    }
+
+    /**
+     * Limb 2, for every entity: the dropdowns name nothing out of scope.
+     *
+     * @dataProvider entities
+     */
+    public function testEveryEntitysFacetOptionsAreScoped(
+        string $list, string $facets, string $id): void
+    {
+        $options = $facets([], $this->user(self::ENCODER, 'Encoder'));
+
+        $this->assertNotSame([], $options, "$facets offered no facets at all.");
+        $this->assertDisclosesNothing($options, "$facets");
+    }
+
+    /**
+     * And none of it is vacuous: an administrator sees the other office's row
+     * on every one of these entities, so the empty results above are the scope
+     * working rather than the fixture missing.
+     *
+     * @dataProvider entities
+     */
+    public function testAnAdministratorSeesTheOtherOfficeOnEveryEntity(
+        string $list, string $facets, string $id): void
+    {
+        $rows = $this->rowsOf($list([], $this->user(self::ADMIN, 'Admin')));
+
+        $this->assertNotSame([], $rows, "$list returned nothing even for an administrator.");
+        $this->assertStringContainsString('UNSEEABLE', (string) json_encode($rows),
+            "$list showed an administrator nothing from the other office - "
+            . 'the fixture for this entity is not proving anything.');
+    }
+
+    /** Every entity FilterSpec knows about is covered by the cases above. */
+    public function testEverySearchableEntityIsCoveredHere(): void
+    {
+        $covered = array_keys(self::entities());
+
+        // EmployeesSensitive is Employees with a wider search box, exercised
+        // through apiListEmployees for a caller holding employee.sensitive
+        // rather than as an entity of its own.
+        $expected = array_values(array_diff(
+            \Digos\Domain\Query\FilterSpec::entities(), ['EmployeesSensitive']));
+
+        sort($covered);
+        sort($expected);
+
+        $this->assertSame($expected, $covered,
+            'A FilterSpec entity has no disclosure coverage in this file.');
     }
 
     /* ===================================================================

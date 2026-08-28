@@ -63,21 +63,29 @@ final class FilterSql
     /**
      * The ORDER BY body - "`DateCreated` DESC, `PayrollNo` DESC".
      *
-     * Both column names come from FilterSpec's allowlist and the direction is
+     * Every column name comes from FilterSpec's allowlist and the direction is
      * one of two literals, so this is the one identifier interpolation in the
      * query layer and it can never carry a payload value. The tiebreak follows
      * the same direction as the sort so the total order reads naturally rather
-     * than reversing halfway down the page.
+     * than reversing halfway down the page, and is skipped when the sort
+     * already names it.
+     *
+     * A sort key may name several columns - an employee list sorts by surname
+     * then first name, and collapsing that to surname alone would reorder
+     * everyone who shares one.
      */
     public static function orderBy(FilterSpec $spec, string $alias = ''): string
     {
         $direction = $spec->sortDirection();
-        $order = [self::identifier($spec->sortColumn(), $alias) . ' ' . $direction];
+        $columns = $spec->sortColumns();
 
-        if ($spec->tiebreakColumn() !== $spec->sortColumn()) {
-            $order[] = self::identifier($spec->tiebreakColumn(), $alias) . ' ' . $direction;
+        if (!in_array($spec->tiebreakColumn(), $columns, true)) {
+            $columns[] = $spec->tiebreakColumn();
         }
-        return implode(', ', $order);
+
+        return implode(', ', array_map(
+            fn(string $column) => self::column($column, $alias) . ' ' . $direction,
+            $columns));
     }
 
     /**
@@ -94,21 +102,21 @@ final class FilterSql
         switch ($op) {
             case 'exact':
                 $params[] = $values[0];
-                return self::identifier($condition['column'], $alias) . ' = ?';
+                return self::column($condition['column'], $alias) . ' = ?';
 
             case 'in':
                 foreach ($values as $value) $params[] = $value;
-                return self::identifier($condition['column'], $alias)
+                return self::column($condition['column'], $alias)
                     . ' IN (' . implode(', ', array_fill(0, count($values), '?')) . ')';
 
             case 'dateFrom':
             case 'datetimeFrom':
                 $params[] = $values[0];
-                return self::identifier($condition['column'], $alias) . ' >= ?';
+                return self::column($condition['column'], $alias) . ' >= ?';
 
             case 'dateTo':
                 $params[] = $values[0];
-                return self::identifier($condition['column'], $alias) . ' <= ?';
+                return self::column($condition['column'], $alias) . ' <= ?';
 
             case 'datetimeTo':
                 // "to the 16th" has to include the 16th. A DATETIME compared
@@ -116,14 +124,14 @@ final class FilterSql
                 // drop everything stamped during the day the user named -
                 // which looks like missing data, not like an off-by-one.
                 $params[] = $values[0];
-                return self::identifier($condition['column'], $alias)
+                return self::column($condition['column'], $alias)
                     . ' < ? + INTERVAL 1 DAY';
 
             case 'search':
                 $like = '%' . self::escapeLike((string) $values[0]) . '%';
                 $parts = [];
                 foreach ($condition['columns'] as $column) {
-                    $parts[] = self::identifier($column, $alias) . ' LIKE ?';
+                    $parts[] = self::column($column, $alias) . ' LIKE ?';
                     $params[] = $like;
                 }
                 return '(' . implode(' OR ', $parts) . ')';
@@ -139,10 +147,27 @@ final class FilterSql
      * Safe to interpolate because every caller reaches it through FilterSpec,
      * whose FACETS and SORTS maps are hardcoded. The backticks are the
      * codebase convention rather than a defence; the allowlist is the defence.
+     *
+     * A facet column may carry its own alias - "e.LastName" - which overrides
+     * the one passed in. That is not a second source of identifiers: the
+     * prefix is written in the same hardcoded map as the column beside it. It
+     * exists because the entities added in 9B are scoped through a join, so
+     * their free-text search legitimately spans two tables - a bio exemption
+     * is searched by its reason AND by the employee's surname, and those live
+     * on different sides of the join.
+     *
+     * Public so the facet-option queries in app/Repo/FacetOptions.php qualify
+     * a column exactly the way the filters do. Two spellings of the same
+     * column is how a dropdown ends up offering a value that then matches
+     * nothing.
      */
-    private static function identifier(string $column, string $alias): string
+    public static function column(string $column, string $alias = ''): string
     {
-        return $alias . '`' . $column . '`';
+        if (!str_contains($column, '.')) return $alias . '`' . $column . '`';
+
+        [$explicit, $name] = explode('.', $column, 2);
+
+        return $explicit . '.`' . $name . '`';
     }
 
     /**

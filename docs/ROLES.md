@@ -85,18 +85,18 @@ appears here by accident rather than by decision.
 - `calendar.edit` — apiDeleteHoliday, apiSaveHoliday
 - `calendar.view` — apiListHolidayPayRules, apiListHolidays
 - `contract.edit` — apiAmendContract, apiSaveContract
-- `contract.view` — apiGetContractHistory, apiListContracts
+- `contract.view` — apiGetContractFacets, apiGetContractHistory, apiListContracts
 - `dashboard.view` — apiGetDashboard, apiGetLookups
 - `data.import` — apiCommitImport, apiGetImportTypes, apiPreviewImport
 - `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
 - `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder
-- `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
+- `document.view` — apiGetBioExemptionFacets, apiGetMemorandum, apiGetMemorandumFacets, apiGetTravelOrderFacets, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
 - `dtr.edit` — apiDeleteDtrDay, apiSaveDtrDays
 - `dtr.import` — apiImportBiometricLogs
 - `dtr.view` — apiGetDtrGrid, apiGetDtrTotals, apiResolveDay
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
-- `employee.view` — apiGetEmployee, apiListEmployees
+- `employee.view` — apiGetEmployee, apiGetEmployeeFacets, apiListEmployees
 - `log.view` — apiGetLogs
 - `office.edit` — apiDeleteDepartment, apiDeleteFunction, apiDeleteOffice, apiSaveDepartment, apiSaveFunction, apiSaveOffice
 - `office.view` — apiListDepartments, apiListFunctions, apiListOffices
@@ -105,7 +105,7 @@ appears here by accident rather than by decision.
 - `payroll.release` — apiEmailPayslips, apiReleasePayroll
 - `payroll.submit` — apiSubmitPayroll
 - `payroll.suspend` — apiReturnPayroll, apiSettleSuspension, apiSuspendPayroll
-- `payroll.view` — apiComputePayroll, apiGetPayroll, apiGetPayrollFacets, apiListPayrolls, apiListSuspensions, apiRunPreAudit
+- `payroll.view` — apiComputePayroll, apiGetPayroll, apiGetPayrollFacets, apiGetSuspensionFacets, apiListPayrolls, apiListSuspensions, apiRunPreAudit
 - `period.edit` — apiDeletePeriod, apiSavePeriod
 - `period.view` — apiListPeriods
 - `print.run` — apiGetPrintHtml, apiMarkPrinted, apiQueueForPrinting

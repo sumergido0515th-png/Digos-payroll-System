@@ -819,10 +819,16 @@ function apiSettleSuspension(array $p, array $user): array
     return ['NsNo' => $p['NsNo'], 'Status' => $status, 'payrollReopened' => !$stillOpen];
 }
 
+/** The choices the suspension filter bar may offer this user. */
+function apiGetSuspensionFacets(array $p, array $user): array
+{
+    return SuspensionRepo::facetOptionsScoped($user);
+}
+
 /** Suspensions the caller may see, for the worklist and a payroll's own history. */
 function apiListSuspensions(array $p, array $user): array
 {
-    return SuspensionRepo::listScoped($user, $p);
+    return SuspensionRepo::search($user, $p);
 }
 
 /** PRE_AUDIT_APPROVED -> FOR_PRINTING. Phase 8 attaches certification to the next step. */
