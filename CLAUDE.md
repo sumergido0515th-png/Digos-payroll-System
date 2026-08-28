@@ -110,6 +110,17 @@ use it as the reference.
 
 ## Traps
 
+- **A migration adding `ON DELETE CASCADE` or `SET NULL` owes a delete guard the same day.**
+  The guards have fallen behind the schema twice — `0009` in July, and Phases 3/5/7 in
+  August, when `TravelOrders`, `BioExemptions` and `Suspensions` began hanging off
+  `Employees` and `apiDeleteEmployee` never learned. Neither time did anything fail:
+  `SET NULL` is the worse half, because it keeps the row and erases only the link, so the
+  payroll still exists with nobody having prepared it.
+  `tests/Integration/CascadeGuardTest.php` reads the live schema and fails unless every
+  destructive key onto a table an endpoint deletes from is either named in that endpoint or
+  listed there with the reason the rows are meant to go. It proves the key was considered,
+  not that the guard is right — `tests/Integration/DeleteGuardTest.php` is what proves a
+  refusal refuses, in words a timekeeper can act on.
 - `app/bootstrap.php` opens a database connection and starts a session. **Never require it
   from a test** — `tests/bootstrap.php` deliberately does not.
 - Applied migrations are immutable. `tools/migrate.php` checksums them and refuses to run if

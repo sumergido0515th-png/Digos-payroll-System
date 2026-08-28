@@ -311,6 +311,27 @@ function apiDeleteUser(array $p, array $user): array
             "SELECT COUNT(*) FROM Users WHERE Role = 'Administrator' AND Status = 'Active'");
         if ($admins <= 1) throw new RuntimeException('Cannot delete the last active administrator.');
     }
+
+    // Four columns point at Users ON DELETE SET NULL, and every one of them is
+    // the answer to "who did this?" on a record that has already been acted on.
+    // Deleting the account blanks all four and reports success: the payroll
+    // still exists, and nobody prepared or approved it any more. That is the
+    // defect 0009 left on FunctionCode, now on the two columns segregation of
+    // duties is actually checked against - PreparedByUser and ApprovedByUser -
+    // which is why an account that has touched anything is kept, not removed.
+    foreach ([
+        ['SELECT COUNT(*) FROM Payroll WHERE PreparedByUser = ?', 'prepared %d payroll(s)'],
+        ['SELECT COUNT(*) FROM Payroll WHERE ApprovedByUser = ?', 'approved %d payroll(s)'],
+        ['SELECT COUNT(*) FROM PrintLog WHERE PrintedByUser = ?', 'printed %d official form(s)'],
+        ['SELECT COUNT(*) FROM ScopeGrants WHERE GrantedBy = ?', 'granted access %d time(s)'],
+    ] as [$sql, $describe]) {
+        $n = (int) DB::scalar($sql, [$p['Email']]);
+        if ($n) {
+            throw new RuntimeException('This account ' . sprintf($describe, $n)
+                . ' and is named on those records. Set its status to Inactive instead of '
+                . 'deleting it - deleting removes the name from what it signed for.');
+        }
+    }
     return ['deleted' => DB::exec('DELETE FROM Users WHERE Email = ?', [$p['Email']])];
 }
 

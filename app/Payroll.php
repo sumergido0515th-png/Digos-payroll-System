@@ -76,6 +76,15 @@ function apiDeletePeriod(array $p, array $user): array
     requireFields($p, ['PeriodID']);
     $used = (int) DB::scalar('SELECT COUNT(*) FROM Payroll WHERE PeriodID = ?', [$p['PeriodID']]);
     if ($used) throw new RuntimeException('Payroll transactions exist for this period. Close or lock it instead.');
+    // DtrDays.PeriodID is ON DELETE SET NULL, so the captured days survive the
+    // period and stop belonging to one. Phase 3B's whole claim is that a payroll
+    // total can be re-derived by summing that employee's days for the period -
+    // days with no period cannot be summed for it, and nothing reports the loss.
+    $days = (int) DB::scalar('SELECT COUNT(*) FROM DtrDays WHERE PeriodID = ?', [$p['PeriodID']]);
+    if ($days) {
+        throw new RuntimeException("$days daily time record(s) were captured for this period. "
+            . 'Deleting it would leave them belonging to no period at all. Close or lock it instead.');
+    }
     return ['deleted' => DB::exec('DELETE FROM PayrollPeriods WHERE PeriodID = ?', [$p['PeriodID']])];
 }
 
