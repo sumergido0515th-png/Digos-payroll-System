@@ -62,7 +62,17 @@ final class RouteTableTest extends TestCase
         // mistakes rather than history. Listed rather than granted to HRMO,
         // because handing a role a destructive power it never had is a policy
         // decision and not a side effect of adding a test.
-        'employee.delete' => 'destructive master-data removal; administrator-only since Phase 0',
+        //
+        // DECIDED 2026-08-29: it stays administrator-only. The question was
+        // raised here for Phase 7, which shipped without answering it, so this
+        // is the answer rather than the deferral it was. What changed in the
+        // meantime is that the endpoint now refuses on payroll lines,
+        // contracts, DTR days, travel orders, bio exemptions and suspensions -
+        // six kinds of history, up from one - so the power being withheld is
+        // only ever the removal of an employee nothing points at. That is a
+        // small enough thing to keep asking an administrator for.
+        'employee.delete' => 'destructive master-data removal; administrator-only since Phase 0, '
+            . 'ratified 2026-08-29',
     ];
 
     public function testEveryRouteResolvesToADefinedFunction(): void
