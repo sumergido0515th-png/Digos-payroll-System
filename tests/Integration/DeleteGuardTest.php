@@ -35,6 +35,14 @@ final class DeleteGuardTest extends TestCase
     private const PAYROLL = 'ZZG-0001';
     private const HISTORY_EMPLOYEE = 'EMP-ZZGUARD-HIST';
 
+    /**
+     * Carries documents but no contract and no DTR row, so each document guard
+     * is the one being tested. referenceGuard stops at the first non-zero
+     * count, so an employee with rate history would prove only that the
+     * contract check still works.
+     */
+    private const DOC_EMPLOYEE = 'EMP-ZZGUARD-DOC';
+
     protected function setUp(): void
     {
         if (!TestDatabase::isAvailable()) {
@@ -74,6 +82,12 @@ final class DeleteGuardTest extends TestCase
         $db->prepare('DELETE FROM DtrDays WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
         $db->prepare('DELETE FROM Contracts WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
         $db->prepare('DELETE FROM Employees WHERE EmployeeID = ?')->execute([self::HISTORY_EMPLOYEE]);
+        // Suspensions reference the payroll as well as the employee, so they go
+        // before it rather than with the rest of the document rows.
+        $db->prepare('DELETE FROM Suspensions WHERE PayrollNo = ?')->execute([self::PAYROLL]);
+        $db->prepare('DELETE FROM TravelOrders WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
+        $db->prepare('DELETE FROM BioExemptions WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
+        $db->prepare('DELETE FROM Employees WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
         $db->prepare('DELETE FROM PayrollDetails WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM Payroll WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM PayrollPeriods WHERE PeriodID = ?')->execute([self::PERIOD]);
@@ -96,6 +110,109 @@ final class DeleteGuardTest extends TestCase
         $db->prepare('INSERT INTO DtrDays (DtrDayID, EmployeeID, WorkDate, PeriodID, HoursWorked, Source)
                       VALUES (?, ?, ?, ?, ?, ?)')
             ->execute(['DTR-ZZGUARD-001', self::HISTORY_EMPLOYEE, '2026-07-01', self::PERIOD, 8.00, 'Manual']);
+    }
+
+    /** An employee with nothing attached yet - the mistake a delete is for. */
+    private function createDocumentEmployeeFixture(): void
+    {
+        TestDatabase::connect()
+            ->prepare('INSERT INTO Employees (EmployeeID, LastName, FirstName, OfficeCode,
+                                              EmploymentType, EmploymentTypeCode, Position, Status)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([self::DOC_EMPLOYEE, 'Guard', 'Document', self::OFFICE,
+                'Job Order', 'JO', 'Clerk', 'Active']);
+    }
+
+    public function testDeletingAnEmployeeWithTravelOrdersIsRefused(): void
+    {
+        $this->createDocumentEmployeeFixture();
+        TestDatabase::connect()
+            ->prepare('INSERT INTO TravelOrders (TravelOrderID, TravelOrderNo, EmployeeID,
+                                                 Destination, DepartDate, ReturnDate)
+                       VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute(['TO-ZZGUARD-001', 'TO-2026-ZZG-001', self::DOC_EMPLOYEE,
+                'Davao City', '2026-07-02', '2026-07-03']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteEmployee([
+            'EmployeeID' => self::DOC_EMPLOYEE,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting an employee with a travel order should have been refused - the order '
+            . 'cascades away with them and it carries its own control number.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('travel order', $message);
+
+        $this->assertSame(1,
+            $this->rowCount('SELECT COUNT(*) FROM TravelOrders WHERE EmployeeID = ?', self::DOC_EMPLOYEE),
+            'The travel order was destroyed by the cascade.');
+    }
+
+    public function testDeletingAnEmployeeWithBioExemptionsIsRefused(): void
+    {
+        $this->createDocumentEmployeeFixture();
+        TestDatabase::connect()
+            ->prepare('INSERT INTO BioExemptions (ExemptionID, EmployeeID, ReasonCode, Reason,
+                                                  ValidFrom, ValidTo)
+                       VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute(['BIO-ZZGUARD-001', self::DOC_EMPLOYEE, 'FIELD', 'Field assignment',
+                '2026-07-01', '2026-07-15']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteEmployee([
+            'EmployeeID' => self::DOC_EMPLOYEE,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting an employee with a bio exemption should have been refused - it is what '
+            . 'accounts for their missing scans.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('exemption', $message);
+
+        $this->assertSame(1,
+            $this->rowCount('SELECT COUNT(*) FROM BioExemptions WHERE EmployeeID = ?', self::DOC_EMPLOYEE),
+            'The bio exemption was destroyed by the cascade.');
+    }
+
+    public function testDeletingAnEmployeeWithPreAuditSuspensionsIsRefused(): void
+    {
+        $this->createDocumentEmployeeFixture();
+        TestDatabase::connect()
+            ->prepare('INSERT INTO Suspensions (NsNo, PayrollNo, EmployeeID, GroundCode, Particulars)
+                       VALUES (?, ?, ?, ?, ?)')
+            ->execute(['NS-ZZGUARD-001', self::PAYROLL, self::DOC_EMPLOYEE, 'DOC-001',
+                'Hand-keyed day with no justification.']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteEmployee([
+            'EmployeeID' => self::DOC_EMPLOYEE,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting an employee named on a pre-audit suspension should have been refused - '
+            . 'the finding and its settlement record cascade away with them.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('suspension', $message);
+
+        $this->assertSame(1,
+            $this->rowCount('SELECT COUNT(*) FROM Suspensions WHERE EmployeeID = ?', self::DOC_EMPLOYEE),
+            'The suspension was destroyed by the cascade.');
+    }
+
+    /**
+     * The guard has to stay a guard rather than becoming a wall. A count query
+     * missing its WHERE clause would refuse every delete in the system while
+     * every test above still passed, so the permitted case is asserted too.
+     */
+    public function testAnEmployeeWithNoHistoryAtAllStillDeletes(): void
+    {
+        $this->createDocumentEmployeeFixture();
+
+        $result = apiDeleteEmployee(['EmployeeID' => self::DOC_EMPLOYEE], []);
+
+        $this->assertSame(1, $result['deleted'],
+            'An employee with no payroll, contract, DTR or document history should delete - '
+            . 'removing a mis-keyed record is what this endpoint is for.');
+        $this->assertSame(0,
+            $this->rowCount('SELECT COUNT(*) FROM Employees WHERE EmployeeID = ?', self::DOC_EMPLOYEE));
     }
 
     public function testDeletingAnOfficeWithPayrollHistoryIsRefusedInPlainWords(): void

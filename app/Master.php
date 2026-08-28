@@ -132,6 +132,20 @@ function apiDeleteEmployee(array $p, array $user): array
     // answer "what rate was in force?" and "what time was recorded?" later.
     // Letting the database cascade them away would make the delete look clean
     // while erasing the record the audit path depends on.
+    //
+    // Seven tables cascade from Employees, and this guard covered two of them.
+    // Travel orders, bio exemptions and suspensions are not derived data: each
+    // carries its own control number, each is cited by name in a pre-audit
+    // finding, and each answers a question about a date the DTR alone cannot.
+    // Deleting the employee took all three with it and reported success.
+    //
+    // Two cascades are deliberately NOT guarded. EmployeeSensitive is the
+    // employee's own restricted tier and has no meaning without them, which is
+    // what 0015 built it for. MemorandumEmployees is a membership list - the
+    // memorandum survives, minus one name, which is what removing an employee
+    // from a memorandum means. AttachmentCoverage is left out for a different
+    // reason: it is per-employee-per-date and cannot exist without the DTR days
+    // the check above already refuses on.
     $used = (int) DB::scalar('SELECT COUNT(*) FROM PayrollDetails WHERE EmployeeID = ?', [$p['EmployeeID']]);
     if ($used) {
         throw new RuntimeException("This employee appears on $used payroll line(s) and cannot be deleted. "
@@ -142,6 +156,12 @@ function apiDeleteEmployee(array $p, array $user): array
             '%d contract row(s) belong to this employee. Keep the employee inactive instead of deleting their rate history.'],
         ['SELECT COUNT(*) FROM DtrDays WHERE EmployeeID = ?',
             '%d DTR row(s) belong to this employee. Keep the employee inactive instead of deleting their timekeeping history.'],
+        ['SELECT COUNT(*) FROM TravelOrders WHERE EmployeeID = ?',
+            '%d travel order(s) belong to this employee. Keep the employee inactive instead of deleting the orders that account for their days out of office.'],
+        ['SELECT COUNT(*) FROM BioExemptions WHERE EmployeeID = ?',
+            '%d biometric exemption(s) belong to this employee. Keep the employee inactive instead of deleting the approvals that explain their missing scans.'],
+        ['SELECT COUNT(*) FROM Suspensions WHERE EmployeeID = ?',
+            '%d pre-audit suspension(s) were raised against this employee. Keep the employee inactive - deleting them removes the settlement record along with the finding.'],
     ]);
     return ['deleted' => DB::exec('DELETE FROM Employees WHERE EmployeeID = ?', [$p['EmployeeID']])];
 }
