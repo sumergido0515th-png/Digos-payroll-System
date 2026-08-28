@@ -641,6 +641,44 @@ Office-scoped user never sees another office's totals in any view or export. Wat
 ### Token-saving notes
 Build last — dashboards query everything else, so building them before earlier phases stabilize means rebuilding them repeatedly.
 
+### Implementation plan
+
+*Drafted 2026-08-29 against the tree as it stands. The Tasks, Deliverable and Exit Gate above are frozen and unchanged by this; what follows is how to build them.*
+
+**This phase looks like UI work and is not.** The exit gate is a disclosure test, and the current list pattern cannot carry it: `rowMatches()` in `app/Helpers.php` fetches every row and filters in PHP afterwards. That is safe today only because the fetch is already scoped. Faceted filters, aggregates and exports all need SQL-side filtering, and every one of them has to compose with — never replace — `ScopeGateway::where()`, which returns `{sql, params}` and deliberately yields `ScopePredicate::DENY_ALL` rather than an empty string so a forgetful caller cannot widen a query by concatenating nothing. The query layer is the deliverable; the screens are the cheap part.
+
+| Piece | Where | Why there |
+|---|---|---|
+| `FilterSpec` | `app/Domain/Query/`, pure | Validates the payload against a hardcoded facet allowlist and normalises it. Arrays in, arrays out, fixture-tested — the Phase 4 and 6 shape. It is also where "interpolated column names come from an allowlist, never the payload" is enforced. |
+| `FilterSql` | `app/Domain/Query/`, pure | `FilterSpec` → `{sql, params}`. Never receives `$user` and never knows about scope. |
+| `search()` per repo | `app/Repo/` | The only place scope and filters meet, always `WHERE (scope) AND (filters)`. Keeps `DB::` where the guard requires it. |
+| Watchlists | `app/Domain/Query/`, pure | Date predicates only. All four columns exist: `BioExemptions.ValidTo`, `Contracts.EndDate`, `Memorandum.EffectivityEnd`, `Suspensions.Deadline`. |
+
+**Write the exit-gate test first**, and make it cover three things — the third is the one that gets missed:
+
+1. A CMO-scoped user filtering any entity never receives an OCEEM row, **including when the filter explicitly names OCEEM**. That case must return empty rather than refuse: a refusal confirms the office exists.
+2. **The facet options are scoped too.** A filter dropdown listing every office name discloses the org chart before a single row is fetched.
+3. **Exports run the same scoped query as the view they export.** This is exactly where the 2026-07-30 leak lived — `printBundle()` took no user and queried `Payroll` directly, so `apiGetPayroll` refused another office's payroll while `apiGetPrintHtml` rendered it in full. An export path built *beside* the list path rather than *on top of* it repeats that defect precisely.
+
+Aggregates need their own assertions rather than row assertions: a citywide total is a single number that discloses the existence and size of every other office, which is the whole reason the permission is separate.
+
+**Suggested split.** This is the largest remaining phase and Phase 3B is the precedent for dividing one:
+
+- **9A** — query core, exit-gate test, one entity (Payroll) end to end
+- **9B** — remaining facets, and scoping the facet options
+- **9C** — the four watchlists, fixture-tested
+- **9D** — exports and citywide aggregates behind the new permission
+- **9E** — UI: URL-encoded filter state, role default views
+
+### Open decisions (before 9A)
+
+1. **CSV only, or XLSX as well?** The task list says both. XLSX needs a library, against "no framework, no build step"; CSV needs nothing and still carries the active filters in a header row as required.
+2. **The permission name.** The task list writes `VIEW_CITYWIDE_AGGREGATE`; every permission in the tree is lowercase-dotted (`report.view`, `scope.manage`), so it should probably be `aggregate.citywide`. `RouteTableTest` will then require a decision on which roles hold it, or an explicit `ADMIN_ONLY_PERMISSIONS` entry — the same question `employee.delete` went through on 2026-08-29.
+3. **"Open-ended memo" definition.** Read here as `EffectivityEnd IS NULL AND UpdatedAt < today - 6 months`, but `EffectivityType` may already encode it.
+4. **Whether to take the 9A–9E split** or run the phase as one session against the frozen scope.
+
+**Carried-over risk:** Function/PPA is one of the facets, and every office and payroll currently charges the placeholder code `9999`, which exists in `Functions` as a real row. A filter over that column will look like it works. See the first Backlog item; it starts mattering at 9B.
+
 ---
 
 ## Phase 10 — UAT & Cutover
