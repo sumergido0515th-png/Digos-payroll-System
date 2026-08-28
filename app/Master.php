@@ -349,6 +349,15 @@ function apiSaveDepartment(array $p, array $user): array
 function apiDeleteDepartment(array $p, array $user): array
 {
     requireFields($p, ['DeptCode']);
+    // Departments.ParentDeptCode points at Departments ON DELETE SET NULL, so
+    // deleting a parent flattens its children into top-level departments and
+    // reports success. Nothing records which parent they had, so the hierarchy
+    // cannot be rebuilt afterwards.
+    referenceGuard($p['DeptCode'], [
+        ['SELECT COUNT(*) FROM Departments WHERE ParentDeptCode = ?',
+            '%d department(s) sit under this one. Move them somewhere else first - deleting '
+            . 'this department would leave them with no parent and no record of which one it was.'],
+    ]);
     return ['deleted' => DB::exec('DELETE FROM Departments WHERE DeptCode = ?', [$p['DeptCode']])];
 }
 

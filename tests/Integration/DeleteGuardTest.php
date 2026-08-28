@@ -43,6 +43,11 @@ final class DeleteGuardTest extends TestCase
      */
     private const DOC_EMPLOYEE = 'EMP-ZZGUARD-DOC';
 
+    private const PARENT_DEPT = 'ZZGUARD-PAR';
+    private const CHILD_DEPT = 'ZZGUARD-CHI';
+    private const EMPTY_PERIOD = 'PRD-ZZGUARD-EMPTY';
+    private const ACTOR = 'zzguard.actor@example.test';
+
     protected function setUp(): void
     {
         if (!TestDatabase::isAvailable()) {
@@ -88,11 +93,18 @@ final class DeleteGuardTest extends TestCase
         $db->prepare('DELETE FROM TravelOrders WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
         $db->prepare('DELETE FROM BioExemptions WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
         $db->prepare('DELETE FROM Employees WHERE EmployeeID = ?')->execute([self::DOC_EMPLOYEE]);
+        $db->prepare('DELETE FROM DtrDays WHERE PeriodID = ?')->execute([self::EMPTY_PERIOD]);
+        $db->prepare('DELETE FROM PayrollPeriods WHERE PeriodID = ?')->execute([self::EMPTY_PERIOD]);
+        $db->prepare('DELETE FROM Departments WHERE DeptCode IN (?, ?)')
+            ->execute([self::CHILD_DEPT, self::PARENT_DEPT]);
         $db->prepare('DELETE FROM PayrollDetails WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM Payroll WHERE PayrollNo = ?')->execute([self::PAYROLL]);
         $db->prepare('DELETE FROM PayrollPeriods WHERE PeriodID = ?')->execute([self::PERIOD]);
         $db->prepare('DELETE FROM Offices WHERE OfficeCode = ?')->execute([self::OFFICE]);
         $db->prepare('DELETE FROM Functions WHERE FunctionCode = ?')->execute([self::FUNC]);
+        // Last: Users is SET NULL from Payroll, so the payroll rows above have
+        // to be gone before this is a clean removal rather than a blanking.
+        $db->prepare('DELETE FROM Users WHERE Email = ?')->execute([self::ACTOR]);
     }
 
     /** A separate employee with live rate and timekeeping history. */
@@ -213,6 +225,102 @@ final class DeleteGuardTest extends TestCase
             . 'removing a mis-keyed record is what this endpoint is for.');
         $this->assertSame(0,
             $this->rowCount('SELECT COUNT(*) FROM Employees WHERE EmployeeID = ?', self::DOC_EMPLOYEE));
+    }
+
+    public function testDeletingADepartmentThatOthersSitUnderIsRefused(): void
+    {
+        $db = TestDatabase::connect();
+        $insert = $db->prepare('INSERT INTO Departments (DeptCode, ParentDeptCode, DeptName, OfficeCode, Status)
+                                VALUES (?, ?, ?, ?, ?)');
+        $insert->execute([self::PARENT_DEPT, null, 'Guard parent', self::OFFICE, 'Active']);
+        $insert->execute([self::CHILD_DEPT, self::PARENT_DEPT, 'Guard child', self::OFFICE, 'Active']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteDepartment([
+            'DeptCode' => self::PARENT_DEPT,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting a department with children should have been refused - ParentDeptCode is '
+            . 'SET NULL, so the children survive with no parent and no record of which it was.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('department', $message);
+
+        $this->assertSame(self::PARENT_DEPT,
+            TestDatabase::connect()
+                ->query("SELECT ParentDeptCode FROM Departments WHERE DeptCode = '" . self::CHILD_DEPT . "'")
+                ->fetchColumn(),
+            'The child department was orphaned - its parent link was blanked.');
+    }
+
+    public function testDeletingAPeriodWithCapturedDtrDaysIsRefused(): void
+    {
+        $db = TestDatabase::connect();
+        $db->prepare('INSERT INTO PayrollPeriods (PeriodID, PayrollMonth, PayrollYear, StartDate, EndDate, Status)
+                      VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([self::EMPTY_PERIOD, 'August', 2026, '2026-08-01', '2026-08-15', 'Open']);
+        $this->createDocumentEmployeeFixture();
+        $db->prepare('INSERT INTO DtrDays (DtrDayID, EmployeeID, WorkDate, PeriodID, HoursWorked, Source)
+                      VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute(['DTR-ZZGUARD-EMPTY', self::DOC_EMPLOYEE, '2026-08-03', self::EMPTY_PERIOD, 8.00, 'Manual']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeletePeriod([
+            'PeriodID' => self::EMPTY_PERIOD,
+        ], []));
+
+        $this->assertNotNull($message,
+            'Deleting a period with captured DTR days should have been refused - DtrDays.PeriodID '
+            . 'is SET NULL, so the days survive belonging to no period.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('daily time record', $message);
+
+        $this->assertSame(1,
+            $this->rowCount('SELECT COUNT(*) FROM DtrDays WHERE PeriodID = ?', self::EMPTY_PERIOD),
+            'The DTR day was detached from its period.');
+    }
+
+    /**
+     * The two columns segregation of duties is checked against are SET NULL
+     * from Users. Deleting the account leaves the payroll standing with nobody
+     * having prepared it, which is the question an auditor asks first.
+     */
+    public function testDeletingAUserWhoPreparedAPayrollIsRefused(): void
+    {
+        $db = TestDatabase::connect();
+        $db->prepare('INSERT INTO Users (Email, FullName, Role, Status, PasswordHash)
+                      VALUES (?, ?, ?, ?, ?)')
+            ->execute([self::ACTOR, 'Guard Actor', 'Encoder', 'Active', 'x']);
+        $db->prepare('UPDATE Payroll SET PreparedByUser = ? WHERE PayrollNo = ?')
+            ->execute([self::ACTOR, self::PAYROLL]);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteUser(
+            ['Email' => self::ACTOR],
+            ['Email' => 'someone.else@example.test']));
+
+        $this->assertNotNull($message,
+            'Deleting a user who prepared a payroll should have been refused.');
+        $this->assertStringNotContainsString('sqlstate', $message);
+        $this->assertStringContainsString('prepared', $message);
+        $this->assertStringContainsString('inactive', $message);
+
+        $this->assertSame(self::ACTOR,
+            TestDatabase::connect()
+                ->query("SELECT PreparedByUser FROM Payroll WHERE PayrollNo = '" . self::PAYROLL . "'")
+                ->fetchColumn(),
+            'The payroll lost the name of whoever prepared it.');
+    }
+
+    public function testDeletingAUserWhoHasTouchedNothingStillWorks(): void
+    {
+        TestDatabase::connect()
+            ->prepare('INSERT INTO Users (Email, FullName, Role, Status, PasswordHash)
+                       VALUES (?, ?, ?, ?, ?)')
+            ->execute([self::ACTOR, 'Guard Actor', 'Encoder', 'Active', 'x']);
+
+        $result = apiDeleteUser(['Email' => self::ACTOR], ['Email' => 'someone.else@example.test']);
+
+        $this->assertSame(1, $result['deleted'],
+            'An account that has prepared, approved, printed and granted nothing should still '
+            . 'be removable - otherwise a mis-keyed address can never be cleaned up.');
     }
 
     public function testDeletingAnOfficeWithPayrollHistoryIsRefusedInPlainWords(): void
