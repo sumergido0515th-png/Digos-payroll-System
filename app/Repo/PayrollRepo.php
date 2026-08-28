@@ -67,22 +67,8 @@ final class PayrollRepo
      */
     public static function facetOptionsScoped(array $user): array
     {
-        $scope = ScopeGateway::where($user, 'Payroll');
-        $options = [];
-
-        foreach (FilterSpec::optionColumns('Payroll') as $facet => $column) {
-            // $column is from FilterSpec's hardcoded map, never the payload.
-            $rows = DB::rows(
-                "SELECT DISTINCT `$column` AS value
-                   FROM Payroll
-                  WHERE " . $scope['sql'] . "
-                    AND `$column` IS NOT NULL AND `$column` <> ''
-                  ORDER BY `$column`",
-                $scope['params']);
-
-            $options[$facet] = array_map(fn(array $r) => (string) $r['value'], $rows);
-        }
-        return $options;
+        return FacetOptions::build(
+            'Payroll', 'Payroll', ScopeGateway::where($user, 'Payroll'));
     }
 
     /**

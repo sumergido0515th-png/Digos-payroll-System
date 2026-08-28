@@ -155,12 +155,19 @@ final class FilterSpecTest extends TestCase
             $this->conditionOn($spec, 'DateCreated'));
     }
 
-    /** An entity with no facet map fails loudly, as ScopeEntity does. */
+    /**
+     * An entity with no facet map fails loudly, as ScopeEntity does.
+     *
+     * DtrDays is a real table and deliberately not searchable: the DTR grid is
+     * reached per period per employee, not by filtering days across the city.
+     * Using a real-but-unregistered table rather than a made-up name is what
+     * makes this assert the registry rather than a typo.
+     */
     public function testAnUnregisteredEntityIsRefused(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        FilterSpec::fromPayload('Suspensions', []);
+        FilterSpec::fromPayload('DtrDays', []);
     }
 
     /* ------------------------------------------------------------ sorting */
@@ -169,7 +176,7 @@ final class FilterSpecTest extends TestCase
     {
         $spec = FilterSpec::unfiltered('Payroll');
 
-        $this->assertSame('DateCreated', $spec->sortColumn());
+        $this->assertSame(['DateCreated'], $spec->sortColumns());
         $this->assertSame('DESC', $spec->sortDirection());
         $this->assertSame('PayrollNo', $spec->tiebreakColumn());
     }
@@ -179,7 +186,19 @@ final class FilterSpecTest extends TestCase
     {
         $spec = FilterSpec::fromPayload('Payroll', ['sort' => 'aging', 'direction' => 'asc']);
 
-        $this->assertSame('SubmittedAt', $spec->sortColumn());
+        $this->assertSame(['SubmittedAt'], $spec->sortColumns());
+        $this->assertSame('ASC', $spec->sortDirection());
+    }
+
+    /**
+     * One sort key, two columns - "by name" is surname then first name.
+     * Collapsing it would reorder everyone sharing a surname on every load.
+     */
+    public function testASortKeyMayNameSeveralColumns(): void
+    {
+        $spec = FilterSpec::unfiltered('Employees');
+
+        $this->assertSame(['LastName', 'FirstName'], $spec->sortColumns());
         $this->assertSame('ASC', $spec->sortDirection());
     }
 
@@ -207,6 +226,43 @@ final class FilterSpecTest extends TestCase
         $this->expectException(RuntimeException::class);
 
         FilterSpec::fromPayload('Payroll', ['sort' => 'net', 'direction' => 'DESC; --']);
+    }
+
+    /* ------------------------------------------------- every entity is whole */
+
+    /**
+     * An entity in FACETS with no SORTS, DEFAULT_SORT or KEYS entry is a fatal
+     * the moment anyone searches it, and nothing else would catch it: the four
+     * maps are separate constants, and adding an entity means remembering all
+     * four. This is the check that remembers.
+     */
+    public function testEveryEntityIsDeclaredInEveryMap(): void
+    {
+        $entities = FilterSpec::entities();
+        $this->assertNotEmpty($entities);
+
+        foreach ($entities as $entity) {
+            $spec = FilterSpec::unfiltered($entity);
+
+            $this->assertNotEmpty($spec->sortColumns(),
+                "'$entity' resolves to no sort column - check SORTS and DEFAULT_SORT.");
+            $this->assertNotSame('', $spec->tiebreakColumn(),
+                "'$entity' has no KEYS entry, so its ordering is not total.");
+            $this->assertContains($spec->sortDirection(), ['ASC', 'DESC']);
+        }
+    }
+
+    /** Every entity can also be filtered and searched without throwing. */
+    public function testEveryEntityAcceptsItsOwnFacets(): void
+    {
+        foreach (FilterSpec::entities() as $entity) {
+            foreach (FilterSpec::optionColumns($entity) as $facet => $column) {
+                $spec = FilterSpec::fromPayload($entity, [$facet => 'SOME-VALUE']);
+
+                $this->assertNotNull($this->conditionOn($spec, $column),
+                    "The '$facet' dropdown on '$entity' offers choices that filter nothing.");
+            }
+        }
     }
 
     /* --------------------------------------------------------- facet options */

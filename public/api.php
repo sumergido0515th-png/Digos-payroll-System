@@ -28,6 +28,7 @@ const ROUTES = [
 
     // Employees
     'apiListEmployees' => ['employee.view', 'Employees', ''],
+    'apiGetEmployeeFacets' => ['employee.view', 'Employees', ''],
     'apiGetEmployee' => ['employee.view', 'Employees', ''],
     'apiSaveEmployee' => ['employee.edit', 'Employees', 'SAVE_EMPLOYEE'],
     'apiDeleteEmployee' => ['employee.delete', 'Employees', 'DELETE_EMPLOYEE'],
@@ -75,19 +76,23 @@ const ROUTES = [
     'apiSuspendPayroll' => ['payroll.suspend', 'Payroll', 'SUSPEND_PAYROLL'],
     'apiSettleSuspension' => ['payroll.suspend', 'Suspensions', 'SETTLE_SUSPENSION'],
     'apiListSuspensions' => ['payroll.view', 'Suspensions', ''],
+    'apiGetSuspensionFacets' => ['payroll.view', 'Suspensions', ''],
     'apiQueueForPrinting' => ['print.run', 'Payroll', 'QUEUE_FOR_PRINTING'],
     'apiMarkPrinted' => ['print.run', 'Payroll', 'MARK_PRINTED'],
     'apiGetWorklist' => ['payroll.approve', 'PreAudit', ''],
 
     // Documents (Phase 3)
     'apiListMemoranda' => ['document.view', 'Memorandum', ''],
+    'apiGetMemorandumFacets' => ['document.view', 'Memorandum', ''],
     'apiGetMemorandum' => ['document.view', 'Memorandum', ''],
     'apiSaveMemorandum' => ['document.edit', 'Memorandum', 'SAVE_MEMORANDUM'],
     'apiDeleteMemorandum' => ['document.delete', 'Memorandum', 'DELETE_MEMORANDUM'],
     'apiListBioExemptions' => ['document.view', 'BioExemptions', ''],
+    'apiGetBioExemptionFacets' => ['document.view', 'BioExemptions', ''],
     'apiSaveBioExemption' => ['document.edit', 'BioExemptions', 'SAVE_BIO_EXEMPTION'],
     'apiDeleteBioExemption' => ['document.delete', 'BioExemptions', 'DELETE_BIO_EXEMPTION'],
     'apiListTravelOrders' => ['document.view', 'TravelOrders', ''],
+    'apiGetTravelOrderFacets' => ['document.view', 'TravelOrders', ''],
     'apiSaveTravelOrder' => ['document.edit', 'TravelOrders', 'SAVE_TRAVEL_ORDER'],
     'apiDeleteTravelOrder' => ['document.delete', 'TravelOrders', 'DELETE_TRAVEL_ORDER'],
 
@@ -97,6 +102,7 @@ const ROUTES = [
     'apiGetWorkShiftHistory' => ['shift.view', 'WorkShifts', ''],
     'apiSaveWorkShift' => ['shift.edit', 'WorkShifts', 'SAVE_WORK_SHIFT'],
     'apiListContracts' => ['contract.view', 'Contracts', ''],
+    'apiGetContractFacets' => ['contract.view', 'Contracts', ''],
     'apiGetContractHistory' => ['contract.view', 'Contracts', ''],
     'apiSaveContract' => ['contract.edit', 'Contracts', 'SAVE_CONTRACT'],
     'apiAmendContract' => ['contract.edit', 'Contracts', 'AMEND_CONTRACT'],

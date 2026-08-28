@@ -20,6 +20,8 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
 
 final class EmployeeDocumentRepo
 {
@@ -33,35 +35,56 @@ final class EmployeeDocumentRepo
     private const EMPLOYEE_NAME = "CONCAT(e.LastName, ', ', e.FirstName) AS EmployeeName";
 
     /**
+     * The FROM bodies. Both documents are about a person, so both are scoped
+     * through the employee rather than by carrying an office code of their own
+     * - see ScopeEntity's note on why two answers to "whose row is this?"
+     * eventually disagree. The join therefore carries the scope, and the list
+     * and the facet options must run over the same one.
+     */
+    private const EXEMPTION_FROM =
+        'BioExemptions x JOIN Employees e ON e.EmployeeID = x.EmployeeID';
+
+    private const TRAVEL_FROM =
+        'TravelOrders t JOIN Employees e ON e.EmployeeID = t.EmployeeID';
+
+    /**
      * Bio exemptions within the caller's scope.
      *
      * @param array<string, mixed> $filters EmployeeID, Status, search
      * @return array<int, array<string, mixed>>
      */
-    public static function listExemptionsScoped(array $user, array $filters = []): array
+    public static function searchExemptions(array $user, array $payload = []): array
     {
         $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $spec = FilterSpec::fromPayload('BioExemptions', $payload);
+        $filter = FilterSql::build($spec, 'x.');
 
-        $sql = 'SELECT x.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
-                  FROM BioExemptions x
-                  JOIN Employees e ON e.EmployeeID = x.EmployeeID
-                 WHERE ' . $scope['sql'];
-        $params = $scope['params'];
+        return DB::rows(
+            'SELECT x.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::EXEMPTION_FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec, 'x.'),
+            array_merge($scope['params'], $filter['params']));
+    }
 
-        if (!empty($filters['EmployeeID'])) {
-            $sql .= ' AND x.EmployeeID = ?'; $params[] = $filters['EmployeeID'];
-        }
-        if (!empty($filters['Status'])) {
-            $sql .= ' AND x.Status = ?'; $params[] = $filters['Status'];
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (e.LastName LIKE ? OR x.ReasonCode LIKE ? OR x.Reason LIKE ?'
-                . ' OR x.ProofType LIKE ? OR x.ProofRef LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like, $like, $like);
-        }
+    /** @return array<string, array<int, string>> */
+    public static function exemptionFacetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'BioExemptions', self::EXEMPTION_FROM,
+            ScopeGateway::where($user, 'Employees', 'e.'), 'x.');
+    }
 
-        return DB::rows($sql . ' ORDER BY x.ValidFrom DESC, e.LastName', $params);
+    /**
+     * Bio exemptions within the caller's scope.
+     *
+     * Kept as the name the modules already call; it is searchExemptions().
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function listExemptionsScoped(array $user, array $filters = []): array
+    {
+        return self::searchExemptions($user, $filters);
     }
 
     /** One bio exemption, or null when absent or out of scope. */
@@ -100,30 +123,38 @@ final class EmployeeDocumentRepo
      * @param array<string, mixed> $filters EmployeeID, Status, search
      * @return array<int, array<string, mixed>>
      */
-    public static function listTravelOrdersScoped(array $user, array $filters = []): array
+    public static function searchTravelOrders(array $user, array $payload = []): array
     {
         $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $spec = FilterSpec::fromPayload('TravelOrders', $payload);
+        $filter = FilterSql::build($spec, 't.');
 
-        $sql = 'SELECT t.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
-                  FROM TravelOrders t
-                  JOIN Employees e ON e.EmployeeID = t.EmployeeID
-                 WHERE ' . $scope['sql'];
-        $params = $scope['params'];
+        return DB::rows(
+            'SELECT t.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::TRAVEL_FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec, 't.'),
+            array_merge($scope['params'], $filter['params']));
+    }
 
-        if (!empty($filters['EmployeeID'])) {
-            $sql .= ' AND t.EmployeeID = ?'; $params[] = $filters['EmployeeID'];
-        }
-        if (!empty($filters['Status'])) {
-            $sql .= ' AND t.Status = ?'; $params[] = $filters['Status'];
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (t.TravelOrderNo LIKE ? OR t.Destination LIKE ?'
-                . ' OR t.Purpose LIKE ? OR e.LastName LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like, $like);
-        }
+    /** @return array<string, array<int, string>> */
+    public static function travelOrderFacetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'TravelOrders', self::TRAVEL_FROM,
+            ScopeGateway::where($user, 'Employees', 'e.'), 't.');
+    }
 
-        return DB::rows($sql . ' ORDER BY t.DepartDate DESC, t.TravelOrderNo DESC', $params);
+    /**
+     * Travel orders within the caller's scope.
+     *
+     * Kept as the name the modules already call; it is searchTravelOrders().
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function listTravelOrdersScoped(array $user, array $filters = []): array
+    {
+        return self::searchTravelOrders($user, $filters);
     }
 
     /** One travel order, or null when absent or out of scope. */
