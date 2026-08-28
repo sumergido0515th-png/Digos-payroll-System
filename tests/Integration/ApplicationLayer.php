@@ -58,6 +58,8 @@ final class ApplicationLayer
             'app/Domain/Import/SourceTable.php',
             'app/Domain/Import/ColumnMap.php',
             'app/Domain/Import/EntitySpec.php',
+            'app/Domain/Query/FilterSpec.php',
+            'app/Domain/Query/FilterSql.php',
             'app/Repo/ScopeGrantRepo.php',
             'app/Repo/ScopeGateway.php',
             'app/Repo/EmployeeRepo.php',

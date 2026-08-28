@@ -18,11 +18,80 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
 
 final class PayrollRepo
 {
     /**
+     * Payroll headers this user may see, narrowed by the facets they asked for.
+     *
+     * THE COMPOSITION IS THE POINT. Scope and filters meet here and only here,
+     * always in this order and always with AND between them, so a filter can
+     * narrow what the scope permitted and can never widen it. That is what
+     * lets FilterSpec accept a filter naming another office - it produces a
+     * query that returns nothing, rather than a refusal that would confirm the
+     * office exists.
+     *
+     * @param array<string, mixed> $user the requireUser() row
+     * @param array<string, mixed> $payload the API payload
+     * @return array<int, array<string, mixed>>
+     */
+    public static function search(array $user, array $payload): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll');
+        $spec = FilterSpec::fromPayload('Payroll', $payload);
+        $filter = FilterSql::build($spec);
+
+        return DB::rows(
+            'SELECT * FROM Payroll
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec),
+            array_merge($scope['params'], $filter['params']));
+    }
+
+    /**
+     * The choices each dropdown may offer, built from rows already in scope.
+     *
+     * A facet list is a query result like any other, and the one most easily
+     * forgotten: a dropdown naming every office discloses the org chart before
+     * a single row is fetched. Deriving the options from the scoped table
+     * makes that structurally impossible - an option can only appear because
+     * the caller can already read a row carrying it.
+     *
+     * One query per column rather than a UNION: the columns are few, they are
+     * indexed differently, and a UNION would have to cast them to a common
+     * type, which is how a code with a leading zero stops matching itself.
+     *
+     * @return array<string, array<int, string>> facet key => sorted values
+     */
+    public static function facetOptionsScoped(array $user): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll');
+        $options = [];
+
+        foreach (FilterSpec::optionColumns('Payroll') as $facet => $column) {
+            // $column is from FilterSpec's hardcoded map, never the payload.
+            $rows = DB::rows(
+                "SELECT DISTINCT `$column` AS value
+                   FROM Payroll
+                  WHERE " . $scope['sql'] . "
+                    AND `$column` IS NOT NULL AND `$column` <> ''
+                  ORDER BY `$column`",
+                $scope['params']);
+
+            $options[$facet] = array_map(fn(array $r) => (string) $r['value'], $rows);
+        }
+        return $options;
+    }
+
+    /**
      * Payroll headers this user may see.
+     *
+     * Kept as the name the modules already call. It is search() - the filters
+     * it used to build by hand are now facets in FilterSpec, which is what
+     * lets the same set be reached from a URL, an export and a dashboard
+     * without three copies of this WHERE clause drifting apart.
      *
      * @param array<string, mixed> $user the requireUser() row
      * @param array<string, mixed> $filters the API payload
@@ -30,23 +99,7 @@ final class PayrollRepo
      */
     public static function listScoped(array $user, array $filters): array
     {
-        $scope = ScopeGateway::where($user, 'Payroll');
-
-        $sql = 'SELECT * FROM Payroll WHERE ' . $scope['sql'];
-        $params = $scope['params'];
-
-        foreach (['PeriodID', 'OfficeCode', 'Department', 'Status'] as $f) {
-            if (!empty($filters[$f])) { $sql .= " AND `$f` = ?"; $params[] = $filters[$f]; }
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (PayrollNo LIKE ? OR OfficeCode LIKE ? OR Department LIKE ?'
-                . ' OR PreparedBy LIKE ? OR Remarks LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like, $like, $like);
-        }
-        $sql .= ' ORDER BY DateCreated DESC';
-
-        return DB::rows($sql, $params);
+        return self::search($user, $filters);
     }
 
     /**
