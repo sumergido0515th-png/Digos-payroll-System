@@ -3,7 +3,8 @@
 **Generated** by `php tools/generate-roles-doc.php` from `PERMISSIONS` in
 [app/Auth.php](../app/Auth.php) and the `ROUTES` table in
 [public/api.php](../public/api.php). **Do not edit by hand** - regenerate it.
-`php tools/generate-roles-doc.php --check` fails if this file has drifted.
+`php tools/generate-roles-doc.php --check` fails if this file has drifted, and
+`tests/Architecture/RolesDocTest.php` fails with it.
 
 Phase 2's second deliverable, alongside the scope enforcement layer itself.
 
@@ -21,23 +22,21 @@ reads nothing, whatever this table says.
 
 | Permission | Admin | HRMO | Payroll In-Charge | Pre-Auditor | Encoder | Office Head | Internal Auditor |
 |---|---|---|---|---|---|---|---|
-| `,
-        ` | yes | - | - | - | yes | - | - |
-| `, ` | yes | - | - | - | yes | - | - |
-| `attachment.edit` | yes | yes | yes | - | - | - | - |
-| `attachment.view` | yes | yes | yes | yes | - | yes | yes |
+| `attachment.edit` | yes | yes | yes | - | yes | - | - |
+| `attachment.view` | yes | yes | yes | yes | yes | yes | yes |
 | `backup.run` | yes | - | - | - | - | - | - |
 | `calendar.edit` | yes | yes | - | - | - | - | - |
-| `calendar.view` | yes | yes | yes | yes | - | yes | yes |
+| `calendar.view` | yes | yes | yes | yes | yes | yes | yes |
 | `contract.edit` | yes | yes | - | - | - | - | - |
 | `contract.view` | yes | yes | yes | yes | - | - | yes |
 | `dashboard.view` | yes | yes | yes | yes | yes | yes | yes |
+| `data.import` | yes | yes | - | - | - | - | - |
 | `document.delete` | yes | yes | - | - | - | - | - |
 | `document.edit` | yes | yes | - | - | - | - | - |
-| `document.view` | yes | yes | yes | yes | - | yes | yes |
-| `dtr.edit` | yes | yes | yes | - | - | - | - |
+| `document.view` | yes | yes | yes | yes | yes | yes | yes |
+| `dtr.edit` | yes | yes | yes | - | yes | - | - |
 | `dtr.import` | yes | yes | yes | - | - | - | - |
-| `dtr.view` | yes | yes | yes | yes | - | yes | yes |
+| `dtr.view` | yes | yes | yes | yes | yes | yes | yes |
 | `employee.delete` | yes | - | - | - | - | - | - |
 | `employee.edit` | yes | yes | - | - | - | - | - |
 | `employee.sensitive` | yes | yes | yes | yes | - | - | - |
@@ -53,15 +52,13 @@ reads nothing, whatever this table says.
 | `payroll.view` | yes | yes | yes | yes | yes | yes | yes |
 | `period.edit` | yes | - | yes | - | - | - | - |
 | `period.view` | yes | yes | yes | yes | yes | yes | yes |
-| `print.run` | yes | yes | yes | yes | - | yes | - |
+| `print.run` | yes | yes | yes | yes | yes | yes | - |
 | `report.view` | yes | yes | yes | yes | - | yes | yes |
-| `s day job.
-        ` | yes | - | - | - | yes | - | - |
 | `scope.manage` | yes | - | - | - | - | - | - |
 | `settings.edit` | yes | - | - | - | - | - | - |
 | `settings.view` | yes | - | - | - | - | - | - |
 | `shift.edit` | yes | yes | - | - | - | - | - |
-| `shift.view` | yes | yes | yes | yes | - | yes | yes |
+| `shift.view` | yes | yes | yes | yes | yes | yes | yes |
 | `timekeeper.edit` | yes | yes | - | - | - | - | - |
 | `timekeeper.view` | yes | yes | yes | - | yes | yes | yes |
 | `user.manage` | yes | - | - | - | - | - | - |
@@ -90,6 +87,7 @@ appears here by accident rather than by decision.
 - `contract.edit` — apiAmendContract, apiSaveContract
 - `contract.view` — apiGetContractHistory, apiListContracts
 - `dashboard.view` — apiGetDashboard, apiGetLookups
+- `data.import` — apiCommitImport, apiGetImportTypes, apiPreviewImport
 - `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
 - `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder
 - `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
