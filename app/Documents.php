@@ -23,10 +23,12 @@
 
 declare(strict_types=1);
 
+use Digos\Domain\Query\Watchlist;
 use Digos\Repo\ContractRepo;
 use Digos\Repo\EmployeeDocumentRepo;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\MemorandumRepo;
+use Digos\Repo\ReferenceRepo;
 use Digos\Repo\ScopeGateway;
 use Digos\Repo\WorkShiftRepo;
 
@@ -44,6 +46,34 @@ const MEMO_AUTHORITY_TYPES = ['Overtime', 'Detail', 'Travel', 'FlexiTime', 'Susp
 function apiGetMemorandumFacets(array $p, array $user): array
 {
     return MemorandumRepo::facetOptionsScoped($user);
+}
+
+/* ==========================================================================
+ * Standing watchlists
+ *
+ * Each is a saved filter rather than a query of its own: Watchlist turns the
+ * date into a payload FilterSpec already understands, and the ordinary scoped
+ * search answers it. That is what makes an office-scoped user's watchlist
+ * their own office's records without a line of scope code here - and what
+ * keeps these off the second-path-to-the-same-rows shape that produced the
+ * print leak in July.
+ *
+ * Each is routed on the permission its entity already uses, so the watchlist
+ * discloses nothing the corresponding list screen would not.
+ * ======================================================================== */
+
+/**
+ * Open-ended memoranda nobody has touched in six months.
+ *
+ * "Open-ended" is EffectivityType = 'OpenEnded', decided 2026-08-29 against
+ * the schema: Specific and Recurring memoranda also carry a NULL
+ * EffectivityEnd and are nothing like open-ended, so the obvious predicate
+ * would have reported them too.
+ */
+function apiGetStaleMemoranda(array $p, array $user): array
+{
+    return MemorandumRepo::search($user,
+        Watchlist::payload(Watchlist::MEMORANDA_STALE, date('Y-m-d')));
 }
 
 /** Memoranda the caller may see. */
@@ -220,6 +250,19 @@ function memoCoveredEmployeeIds(array $p, array $user): array
 function apiGetBioExemptionFacets(array $p, array $user): array
 {
     return EmployeeDocumentRepo::exemptionFacetOptionsScoped($user);
+}
+
+/**
+ * Bio exemptions whose validity runs out within the next fifteen days.
+ *
+ * Bounded at both ends: one that lapsed last month has already expired, which
+ * is a different problem with a different remedy, and reporting it here would
+ * bury the ones still worth renewing.
+ */
+function apiGetExpiringBioExemptions(array $p, array $user): array
+{
+    return EmployeeDocumentRepo::searchExemptions($user,
+        Watchlist::payload(Watchlist::BIO_EXEMPTIONS_EXPIRING, date('Y-m-d')));
 }
 
 /** Bio exemptions the caller may see. */
@@ -440,6 +483,29 @@ function restDayList(mixed $raw): string
 function apiGetContractFacets(array $p, array $user): array
 {
     return ContractRepo::facetOptionsScoped($user);
+}
+
+/**
+ * Contracts lapsing on or before the end of a payroll period.
+ *
+ * The period is required rather than defaulted to today: "expiring before
+ * period end" is a question about a specific period, and quietly substituting
+ * today would answer a different question that looks the same on screen.
+ *
+ * There is deliberately no lower bound. A contract that ended before the
+ * period even began is the worse case, not one to filter out - somebody is
+ * being paid on an engagement that already lapsed.
+ */
+function apiGetExpiringContracts(array $p, array $user): array
+{
+    requireFields($p, ['PeriodID']);
+
+    $period = ReferenceRepo::period((string) $p['PeriodID']);
+    if (!$period) throw new RuntimeException('That payroll period does not exist.');
+
+    return ContractRepo::search($user, Watchlist::payload(
+        Watchlist::CONTRACTS_EXPIRING, date('Y-m-d'),
+        ['periodEnd' => (string) $period['EndDate']]));
 }
 
 /** Contracts the caller may see. */
