@@ -9,7 +9,10 @@
  *
  * Generated rather than hand-written because a role/permission matrix is
  * exactly the kind of document that is accurate the day it is written and
- * wrong a month later. --check is what a future CI step would run.
+ * wrong a month later. --check is for running by hand; the same check is enforced
+ * in CI by tests/Architecture/RolesDocTest.php, which calls the functions below
+ * rather than reimplementing them - a check that renders the document a second
+ * way proves only that the two copies agree with each other.
  *
  * Reads app/Auth.php and public/api.php as TEXT, like the architecture suite
  * does, so this tool never opens a database or starts a session.
@@ -24,30 +27,63 @@ if (PHP_SAPI !== 'cli') {
 }
 
 const ROOT = __DIR__ . '/..';
-
-$check = in_array('--check', array_slice($argv, 1), true);
-$target = ROOT . '/docs/ROLES.md';
-
-$permissions = parsePermissions(file_get_contents(ROOT . '/app/Auth.php'));
-$routes = parseRoutes(file_get_contents(ROOT . '/public/api.php'));
-
-$markdown = render($permissions, $routes);
-
-if ($check) {
-    $current = is_file($target) ? file_get_contents($target) : '';
-    if (trim($current) === trim($markdown)) {
-        echo "docs/ROLES.md is up to date.\n";
-        exit(0);
-    }
-    fwrite(STDERR, "docs/ROLES.md is stale - run php tools/generate-roles-doc.php\n");
-    exit(1);
-}
-
-file_put_contents($target, $markdown);
-printf("wrote docs/ROLES.md - %d roles, %d permissions, %d routes\n",
-    count($permissions), count(allPermissions($permissions, $routes)), count($routes));
+const ROLES_DOC = ROOT . '/docs/ROLES.md';
 
 /* ========================================================================== */
+
+/** The document as the current source says it should be. */
+function rolesDocMarkdown(): string
+{
+    return render(
+        parsePermissions(stripComments(file_get_contents(ROOT . '/app/Auth.php'))),
+        parseRoutes(stripComments(file_get_contents(ROOT . '/public/api.php'))));
+}
+
+/**
+ * Source with comments removed, so an apostrophe in prose cannot desync the
+ * quote matching in parsePermissions().
+ *
+ * Not hypothetical: "the encoder's day job" and "their own office's records",
+ * both comments inside PERMISSIONS, each left an unpaired quote, and the
+ * published matrix gained two phantom permissions - rendered as a bare comma
+ * - credited to Admin and Encoder. The architecture suite hit the same defect
+ * in DatabaseAccessTest, where prose about the DB class matched the guard's
+ * own pattern, and fixed it by tokenising. This tool never got the same
+ * treatment.
+ *
+ * Only T_COMMENT and T_DOC_COMMENT are dropped; code inside strings stays
+ * exactly where it is.
+ */
+function stripComments(string $src): string
+{
+    $out = '';
+    foreach (token_get_all($src) as $token) {
+        if (is_array($token)) {
+            if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) continue;
+            $out .= $token[1];
+            continue;
+        }
+        $out .= $token;
+    }
+    return $out;
+}
+
+/**
+ * The repository is CRLF throughout; the renderer composes with newlines.
+ * Without this the written file differs from the rendered string on every
+ * line, and --check reports the document stale forever however current it is
+ * - which it did, and is the likeliest reason it was never wired into CI.
+ */
+function toRepoLineEndings(string $text): string
+{
+    return str_replace("\n", "\r\n", normaliseLineEndings($text));
+}
+
+/** Content compared for drift, insensitive to line endings and trailing space. */
+function normaliseLineEndings(string $text): string
+{
+    return trim(str_replace(["\r\n", "\r"], "\n", $text));
+}
 
 /** @return array<string, string[]> role => permissions */
 function parsePermissions(string $src): array
@@ -106,7 +142,8 @@ function render(array $permissions, array $routes): string
         . "**Generated** by `php tools/generate-roles-doc.php` from `PERMISSIONS` in\n"
         . "[app/Auth.php](../app/Auth.php) and the `ROUTES` table in\n"
         . "[public/api.php](../public/api.php). **Do not edit by hand** - regenerate it.\n"
-        . "`php tools/generate-roles-doc.php --check` fails if this file has drifted.\n\n"
+        . "`php tools/generate-roles-doc.php --check` fails if this file has drifted, and\n"
+        . "`tests/Architecture/RolesDocTest.php` fails with it.\n\n"
         . "Phase 2's second deliverable, alongside the scope enforcement layer itself.\n\n"
         . "## What this document is not\n\n"
         . "**These are actions, not scope.** Holding `payroll.view` says you may look at\n"
@@ -131,7 +168,7 @@ function render(array $permissions, array $routes): string
     }
 
     // Permissions a route requires that no named role lists - reachable only
-    // through Admin's '*'. RouteTableTest keeps this set honest.
+    // through Admin's wildcard. RouteTableTest keeps this set honest.
     $adminOnly = [];
     foreach ($all as $permission) {
         $namedHolder = false;
@@ -163,4 +200,36 @@ function render(array $permissions, array $routes): string
     }
 
     return $out;
+}
+
+/** @return int process exit code */
+function generateRolesDoc(bool $check): int
+{
+    $markdown = rolesDocMarkdown();
+
+    if ($check) {
+        $current = is_file(ROLES_DOC) ? (string) file_get_contents(ROLES_DOC) : '';
+        if (normaliseLineEndings($current) === normaliseLineEndings($markdown)) {
+            echo "docs/ROLES.md is up to date.\n";
+            return 0;
+        }
+        fwrite(STDERR, "docs/ROLES.md is stale - run php tools/generate-roles-doc.php\n");
+        return 1;
+    }
+
+    file_put_contents(ROLES_DOC, toRepoLineEndings($markdown));
+
+    $permissions = parsePermissions(stripComments(file_get_contents(ROOT . '/app/Auth.php')));
+    $routes = parseRoutes(stripComments(file_get_contents(ROOT . '/public/api.php')));
+    printf("wrote docs/ROLES.md - %d roles, %d permissions, %d routes\n",
+        count($permissions), count(allPermissions($permissions, $routes)), count($routes));
+
+    return 0;
+}
+
+// Run only when invoked directly. Requiring this file - which the architecture
+// suite does, to check the document through the same code path the CLI uses -
+// defines the functions and runs nothing.
+if (isset($argv[0]) && realpath($argv[0]) === __FILE__) {
+    exit(generateRolesDoc(in_array('--check', array_slice($argv, 1), true)));
 }
