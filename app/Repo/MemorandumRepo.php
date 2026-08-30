@@ -21,6 +21,7 @@ namespace Digos\Repo;
 use DB;
 use Digos\Domain\Query\FilterSpec;
 use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 
 final class MemorandumRepo
 {
@@ -67,6 +68,27 @@ final class MemorandumRepo
     public static function listScoped(array $user, array $filters = []): array
     {
         return self::search($user, $filters);
+    }
+
+    /**
+     * Open-ended memoranda within the caller's scope, untouched in 6 months.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * so a caller cannot be shown a memo on this list they could not already
+     * read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function openEndedStaleScoped(array $user, string $today): array
+    {
+        $scope = ScopeGateway::where($user, 'Memorandum', 'm.');
+        $watch = Watchlists::openEndedMemosStale($today, 'm.');
+
+        return DB::rows(
+            'SELECT m.* FROM Memorandum m
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY m.UpdatedAt',
+            array_merge($scope['params'], $watch['params']));
     }
 
     /**

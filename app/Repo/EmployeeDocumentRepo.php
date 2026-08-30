@@ -22,6 +22,7 @@ namespace Digos\Repo;
 use DB;
 use Digos\Domain\Query\FilterSpec;
 use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 
 final class EmployeeDocumentRepo
 {
@@ -113,6 +114,31 @@ final class EmployeeDocumentRepo
     public static function deleteExemption(string $exemptionId): int
     {
         return DB::exec('DELETE FROM BioExemptions WHERE ExemptionID = ?', [$exemptionId]);
+    }
+
+    /**
+     * Bio exemptions within the caller's scope, expiring within $withinDays.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * over the same join, so a caller cannot be shown an exemption on this
+     * list they could not already read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function exemptionsExpiringScoped(
+        array $user,
+        string $today,
+        int $withinDays = 15
+    ): array {
+        $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $watch = Watchlists::bioExemptionsExpiringSoon($today, $withinDays, 'x.');
+
+        return DB::rows(
+            'SELECT x.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::EXEMPTION_FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY x.ValidTo',
+            array_merge($scope['params'], $watch['params']));
     }
 
     /* ====================================================================== */

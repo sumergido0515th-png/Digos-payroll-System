@@ -27,6 +27,7 @@ use Digos\Repo\ContractRepo;
 use Digos\Repo\EmployeeDocumentRepo;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\MemorandumRepo;
+use Digos\Repo\ReferenceRepo;
 use Digos\Repo\ScopeGateway;
 use Digos\Repo\WorkShiftRepo;
 
@@ -50,6 +51,18 @@ function apiGetMemorandumFacets(array $p, array $user): array
 function apiListMemoranda(array $p, array $user): array
 {
     return MemorandumRepo::search($user, $p);
+}
+
+/**
+ * Open-ended memoranda the caller may see, untouched in 6 months.
+ *
+ * The predicate is Digos\Domain\Query\Watchlists::openEndedMemosStale() -
+ * EffectivityType = 'OpenEnded', not a NULL EffectivityEnd, which Specific and
+ * Recurring memos both carry legitimately.
+ */
+function apiGetMemorandumWatchlist(array $p, array $user): array
+{
+    return MemorandumRepo::openEndedStaleScoped($user, date('Y-m-d'));
 }
 
 /** One memorandum with its covered employees. */
@@ -226,6 +239,12 @@ function apiGetBioExemptionFacets(array $p, array $user): array
 function apiListBioExemptions(array $p, array $user): array
 {
     return EmployeeDocumentRepo::searchExemptions($user, $p);
+}
+
+/** Bio exemptions the caller may see, expiring within the standing 15-day window. */
+function apiGetBioExemptionWatchlist(array $p, array $user): array
+{
+    return EmployeeDocumentRepo::exemptionsExpiringScoped($user, date('Y-m-d'));
 }
 
 /** Creates or updates a bio exemption. */
@@ -446,6 +465,23 @@ function apiGetContractFacets(array $p, array $user): array
 function apiListContracts(array $p, array $user): array
 {
     return ContractRepo::search($user, $p);
+}
+
+/**
+ * Contracts the caller may see, ending on or before a payroll period's end.
+ *
+ * Takes a PeriodID rather than a raw date - the watchlist question is "will
+ * this contract still cover this period", and the caller names the period,
+ * not a date they would otherwise have to look up first.
+ */
+function apiGetContractWatchlist(array $p, array $user): array
+{
+    requireFields($p, ['PeriodID']);
+
+    $period = ReferenceRepo::period((string) $p['PeriodID']);
+    if (!$period) throw new RuntimeException('Payroll period not found: ' . $p['PeriodID']);
+
+    return ContractRepo::expiringByScoped($user, (string) $period['EndDate']);
 }
 
 /** Every contract for one employee, so a rate change can be explained. */

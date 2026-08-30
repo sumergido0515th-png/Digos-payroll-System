@@ -16,6 +16,7 @@ namespace Digos\Repo;
 use DB;
 use Digos\Domain\Query\FilterSpec;
 use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 
 final class SuspensionRepo
 {
@@ -92,6 +93,28 @@ final class SuspensionRepo
     public static function listScoped(array $user, array $filters = []): array
     {
         return self::search($user, $filters);
+    }
+
+    /**
+     * Suspensions on payrolls the caller may see, still Open past their
+     * deadline.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * over the same join, so a caller cannot be shown a suspension on this
+     * list they could not already read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function pastDeadlineScoped(array $user, string $today): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $watch = Watchlists::suspensionsPastDeadline($today, 's.');
+
+        return DB::rows(
+            'SELECT s.* FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY s.Deadline',
+            array_merge($scope['params'], $watch['params']));
     }
 
     /** Open suspensions for one payroll, unscoped - the caller already holds it. */

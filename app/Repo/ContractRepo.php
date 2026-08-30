@@ -28,6 +28,7 @@ namespace Digos\Repo;
 use DB;
 use Digos\Domain\Query\FilterSpec;
 use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 use RuntimeException;
 
 final class ContractRepo
@@ -80,6 +81,28 @@ final class ContractRepo
     public static function listScoped(array $user, array $filters = []): array
     {
         return self::search($user, $filters);
+    }
+
+    /**
+     * Contracts within the caller's scope ending on or before a period's end.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * over the same join, so a caller cannot be shown a contract on this list
+     * they could not already read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function expiringByScoped(array $user, string $periodEnd): array
+    {
+        $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $watch = Watchlists::contractsEndingBy($periodEnd, 'c.');
+
+        return DB::rows(
+            'SELECT c.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY c.EndDate',
+            array_merge($scope['params'], $watch['params']));
     }
 
     /** One contract, or null when absent or out of scope. */

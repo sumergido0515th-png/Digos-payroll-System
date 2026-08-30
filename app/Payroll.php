@@ -831,6 +831,12 @@ function apiListSuspensions(array $p, array $user): array
     return SuspensionRepo::search($user, $p);
 }
 
+/** Suspensions the caller may see, still Open past their deadline. */
+function apiGetSuspensionWatchlist(array $p, array $user): array
+{
+    return SuspensionRepo::pastDeadlineScoped($user, date('Y-m-d'));
+}
+
 /** PRE_AUDIT_APPROVED -> FOR_PRINTING. Phase 8 attaches certification to the next step. */
 function apiQueueForPrinting(array $p, array $user): array
 {
