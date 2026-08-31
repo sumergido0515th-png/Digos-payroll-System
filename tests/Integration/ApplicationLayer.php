@@ -45,6 +45,8 @@ final class ApplicationLayer
             'app/Helpers.php',
             'app/Domain/Access/ScopeEntity.php',
             'app/Domain/Access/ScopePredicate.php',
+            'app/Domain/Query/FilterSpec.php',
+            'app/Domain/Query/FilterSql.php',
             'app/Domain/Dtr/PeriodTotals.php',
             'app/Domain/Resolver/HolidayResolver.php',
             'app/Domain/Resolver/AuthorityResolver.php',

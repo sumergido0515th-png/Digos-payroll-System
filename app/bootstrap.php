@@ -18,6 +18,8 @@ require_once __DIR__ . '/Helpers.php';
 // is only ever defined once.
 require_once __DIR__ . '/Domain/Access/ScopeEntity.php';
 require_once __DIR__ . '/Domain/Access/ScopePredicate.php';
+require_once __DIR__ . '/Domain/Query/FilterSpec.php';
+require_once __DIR__ . '/Domain/Query/FilterSql.php';
 require_once __DIR__ . '/Domain/Dtr/PeriodTotals.php';
 require_once __DIR__ . '/Domain/Resolver/HolidayResolver.php';
 require_once __DIR__ . '/Domain/Resolver/AuthorityResolver.php';

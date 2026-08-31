@@ -18,11 +18,20 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
 
 final class PayrollRepo
 {
     /**
      * Payroll headers this user may see.
+     *
+     * Composed as "WHERE (scope) AND (filters)", never one in place of the
+     * other - FilterSql never sees $user and never widens what ScopeGateway
+     * already decided. No LIMIT/OFFSET here on purpose: this method also
+     * backs PreAudit.php's worklist and Reports.php's report engine, both of
+     * which need the complete scoped set to compute correct counts and
+     * totals, so pagination belongs at a call site, not here.
      *
      * @param array<string, mixed> $user the requireUser() row
      * @param array<string, mixed> $filters the API payload
@@ -31,22 +40,12 @@ final class PayrollRepo
     public static function listScoped(array $user, array $filters): array
     {
         $scope = ScopeGateway::where($user, 'Payroll');
+        $filter = FilterSql::build(FilterSpec::normalize('Payroll', $filters));
 
-        $sql = 'SELECT * FROM Payroll WHERE ' . $scope['sql'];
-        $params = $scope['params'];
+        $sql = 'SELECT * FROM Payroll WHERE ' . $scope['sql'] . ' AND ' . $filter['sql']
+            . ' ORDER BY DateCreated DESC';
 
-        foreach (['PeriodID', 'OfficeCode', 'Department', 'Status'] as $f) {
-            if (!empty($filters[$f])) { $sql .= " AND `$f` = ?"; $params[] = $filters[$f]; }
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (PayrollNo LIKE ? OR OfficeCode LIKE ? OR Department LIKE ?'
-                . ' OR PreparedBy LIKE ? OR Remarks LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like, $like, $like);
-        }
-        $sql .= ' ORDER BY DateCreated DESC';
-
-        return DB::rows($sql, $params);
+        return DB::rows($sql, array_merge($scope['params'], $filter['params']));
     }
 
     /**
