@@ -66,7 +66,7 @@ final class FilterSqlTest extends TestCase
         $result = FilterSql::build($this->normalized(
             [], 'payslip', ['PayrollNo', 'Remarks']));
 
-        $this->assertSame('(`PayrollNo` LIKE ? OR `Remarks` LIKE ?)', $result['sql']);
+        $this->assertSame('((`PayrollNo` LIKE ? OR `Remarks` LIKE ?))', $result['sql']);
         $this->assertSame(['%payslip%', '%payslip%'], $result['params']);
     }
 
