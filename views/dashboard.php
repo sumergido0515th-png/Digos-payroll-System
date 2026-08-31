@@ -42,6 +42,29 @@
       </table>
     </div>
   </div>
+
+  <!-- Standing watchlists (Phase 9C's four queries, surfaced). Each card is
+       shown only to a role holding that entity's own view permission -
+       exactly the permission its apiGet*Watchlist route already requires,
+       so a card is never offered only to be refused when clicked. -->
+  <div class="row g-3 mt-1" id="dash-watchlists"></div>
+
+  <!-- Citywide totals - gated on aggregate.citywide, held by Internal
+       Auditor and Admin only (Phase 9D). Absent entirely for every other
+       role, not merely hidden, since the row is built only when can() says
+       yes. -->
+  <div class="card mt-3" id="dash-citywide" style="display:none">
+    <div class="card-header py-2">Citywide Payroll Totals by Office</div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr>
+          <th>Office</th><th class="text-end">Payrolls</th>
+          <th class="text-end">Gross</th><th class="text-end">Net</th>
+        </tr></thead>
+        <tbody id="dash-citywide-rows"></tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
 <script>
@@ -129,6 +152,97 @@ Pages.dashboard = (function () {
       .toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   }
 
+  /**
+   * Phase 9C built the four standing watchlists as query/API endpoints only,
+   * with no screen of their own - this is where they finally surface. Each
+   * card's own permission is exactly the one its apiGet*Watchlist route
+   * already requires, so a card is only ever offered to a role that could
+   * also reach it directly, and hidden rather than shown-then-refused for
+   * anyone else.
+   */
+  var WATCHLISTS = [
+    { key: 'bioex', perm: 'document.view', title: 'Bio Exemptions Expiring Soon', icon: 'event_busy',
+      api: 'apiGetBioExemptionWatchlist', page: 'documents', tab: 'bioex',
+      row: function (r) { return esc(r.EmployeeName) + ' &ndash; valid to ' + fmtDate(r.ValidTo); } },
+    { key: 'memo', perm: 'document.view', title: 'Open-Ended Memoranda, Stale 6+ Months', icon: 'history_edu',
+      api: 'apiGetMemorandumWatchlist', page: 'documents', tab: 'memo',
+      row: function (r) { return esc(r.ControlNo) + ' &ndash; ' + esc(r.Subject); } },
+    // Needs the open period's end date - see loadWatchlist(). Contracts
+    // ending BEFORE that date is the predicate Digos\Domain\Query\Watchlists
+    // actually checks; "this period" names it for a reader here.
+    { key: 'contract', perm: 'contract.view', title: 'Contracts Ending This Period', icon: 'assignment_late',
+      api: 'apiGetContractWatchlist', page: 'documents', tab: 'contract', needsPeriod: true,
+      row: function (r) { return esc(r.EmployeeName) + ' &ndash; ends ' + fmtDate(r.EndDate); } },
+    // No standalone list screen to link to - a suspension is read from
+    // within the payroll it was raised against, not as a list of its own -
+    // so the "View all" link only ever appears for a role that can actually
+    // reach the Worklist (payroll.approve), decided in loadWatchlist().
+    { key: 'suspension', perm: 'payroll.view', title: 'Suspensions Past Deadline', icon: 'gavel',
+      api: 'apiGetSuspensionWatchlist', page: 'preaudit', tab: null,
+      row: function (r) { return esc(r.NsNo) + ' &ndash; ' + esc(r.GroundCode) + ', due ' + fmtDate(r.Deadline); } }
+  ];
+
+  function renderWatchlists() {
+    var host = document.getElementById('dash-watchlists');
+    var cards = WATCHLISTS.filter(function (w) { return can(w.perm); });
+    if (!cards.length) { host.innerHTML = ''; return; }
+
+    host.innerHTML = cards.map(function (w) {
+      return '<div class="col-md-6 col-xl-3"><div class="card h-100">' +
+        '<div class="card-header py-2 d-flex align-items-center gap-2">' +
+        '<span class="material-icons" style="font-size:18px">' + w.icon + '</span>' +
+        '<span class="small fw-semibold">' + esc(w.title) + '</span></div>' +
+        '<div class="card-body py-2" id="dash-wl-' + w.key + '">' +
+        '<div class="text-muted small">Loading&hellip;</div></div></div></div>';
+    }).join('');
+
+    cards.forEach(loadWatchlist);
+  }
+
+  function loadWatchlist(w) {
+    var body = document.getElementById('dash-wl-' + w.key);
+    var payload = {};
+
+    if (w.needsPeriod) {
+      var current = (App.lookups.periods || []).filter(function (p) { return p.Status === 'Open'; })[0];
+      if (!current) { body.innerHTML = '<div class="text-muted small">No open period.</div>'; return; }
+      payload.PeriodID = current.PeriodID;
+    }
+
+    api(w.api, payload, true).then(function (rows) {
+      if (!rows.length) { body.innerHTML = '<div class="text-muted small">Nothing outstanding.</div>'; return; }
+
+      var shown = rows.slice(0, 5);
+      var html = '<ul class="list-unstyled small mb-1">' +
+        shown.map(function (r) { return '<li class="text-truncate">' + w.row(r) + '</li>'; }).join('') +
+        '</ul>';
+      if (rows.length > shown.length) {
+        html += '<div class="text-muted small mb-1">+' + (rows.length - shown.length) + ' more</div>';
+      }
+      if (w.key !== 'suspension' || can('payroll.approve')) {
+        html += '<a href="#" class="small" onclick="event.preventDefault();goToPage(\'' + w.page + '\'' +
+          (w.tab ? ',{tab:\'' + w.tab + '\'}' : '') + ')">View all &raquo;</a>';
+      }
+      body.innerHTML = html;
+    }).catch(function () { body.innerHTML = '<div class="text-muted small">Unavailable.</div>'; });
+  }
+
+  /** Citywide totals - aggregate.citywide only (Phase 9D); absent, not merely hidden, otherwise. */
+  function renderCitywide() {
+    var panel = document.getElementById('dash-citywide');
+    if (!can('aggregate.citywide')) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+
+    api('apiGetCitywidePayrollTotals', {}, true).then(function (rows) {
+      document.getElementById('dash-citywide-rows').innerHTML = rows.map(function (r) {
+        return '<tr><td class="fw-semibold">' + esc(r.OfficeCode) + '</td>' +
+          '<td class="text-end">' + esc(r.PayrollCount) + '</td>' +
+          '<td class="text-end text-money">' + fmtMoney(r.TotalGross) + '</td>' +
+          '<td class="text-end text-money">' + fmtMoney(r.TotalNet) + '</td></tr>';
+      }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No payroll data yet.</td></tr>';
+    });
+  }
+
   return {
     init: function () {
       renderGreeting();
@@ -138,6 +252,8 @@ Pages.dashboard = (function () {
         renderCharts(d);
         renderRecent(d.recent);
       });
+      renderWatchlists();
+      renderCitywide();
     }
   };
 })();

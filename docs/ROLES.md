@@ -88,7 +88,7 @@ appears here by accident rather than by decision.
 - `calendar.view` — apiListHolidayPayRules, apiListHolidays
 - `contract.edit` — apiAmendContract, apiSaveContract
 - `contract.view` — apiGetContractFacets, apiGetContractHistory, apiGetContractWatchlist, apiListContracts
-- `dashboard.view` — apiGetDashboard, apiGetLookups
+- `dashboard.view` — apiGetDashboard, apiGetLookups, apiGlobalSearch
 - `data.import` — apiCommitImport, apiGetImportTypes, apiPreviewImport
 - `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
 - `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder

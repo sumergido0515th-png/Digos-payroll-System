@@ -26,6 +26,21 @@
               <span class="material-icons">post_add</span> New Payroll</button>
           </div>
         </div>
+        <div class="row g-2 align-items-end mt-1">
+          <div class="col-md-2"><label class="form-label">Sort by</label>
+            <select class="form-select form-select-sm" id="pr-f-sort"></select></div>
+          <div class="col-md-2">
+            <button class="btn btn-sm btn-outline-secondary w-100" id="pr-f-direction" type="button"
+                    title="Reverse sort direction">
+              <span class="material-icons" id="pr-f-direction-icon" style="font-size:16px;vertical-align:-3px">arrow_downward</span>
+              <span id="pr-f-direction-label">Newest first</span></button></div>
+          <div class="col-md-8 text-end">
+            <!-- Same filters the list is showing, so the download is never a
+                 second query - see public/export.php. -->
+            <a class="btn btn-sm btn-outline-secondary" id="pr-export" href="export.php?entity=Payroll" target="_blank">
+              <span class="material-icons" style="font-size:16px;vertical-align:-3px">download</span> Export CSV</a>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -123,16 +138,45 @@ Pages.payroll = (function () {
   var employees = [];         // active employees available to the grid
   var maxRows = 15;
   var dirtyBound = false;     // editor input listener attached once
+  var direction = 'DESC';     // current sort direction - not itself a filter
+
+  /**
+   * Sort keys, matching Digos\Domain\Query\FilterSpec::SORTS['Payroll'] -
+   * UI words, not column names, because the key becomes part of a shareable
+   * URL and 'net' means something to a person where 'TotalNet' does not any
+   * more than the other way round.
+   */
+  var SORTS = [
+    ['created', 'Date created'], ['submitted', 'Date submitted'], ['aging', 'Aging'],
+    ['approved', 'Date approved'], ['payrollNo', 'Payroll no.'], ['office', 'Office'],
+    ['status', 'Status'], ['gross', 'Gross'], ['net', 'Net']
+  ];
 
   /* ---------- list ---------- */
 
-  function loadList() {
-    api('apiListPayrolls', {
+  /** The filter bar's current state, as apiListPayrolls' payload. */
+  function currentFilters() {
+    return {
       search: document.getElementById('pr-search').value,
       PeriodID: document.getElementById('pr-f-period').value,
       OfficeCode: document.getElementById('pr-f-office').value,
-      Status: document.getElementById('pr-f-status').value
-    }).then(function (rows) {
+      Status: document.getElementById('pr-f-status').value,
+      sort: document.getElementById('pr-f-sort').value,
+      direction: direction
+    };
+  }
+
+  function loadList() {
+    var filters = currentFilters();
+
+    // The address bar and the Export CSV link both track the filter bar, so
+    // a copied link or a downloaded file are never a beat behind what the
+    // screen is actually showing.
+    syncUrl('payroll', filters);
+    document.getElementById('pr-export').href =
+      'export.php?entity=Payroll&' + queryString(filters);
+
+    api('apiListPayrolls', filters).then(function (rows) {
       document.getElementById('pr-rows').innerHTML = rows.map(function (r) {
         var acts = actionBtn('visibility', 'Pages.payroll.view(\'' + r.PayrollNo + '\')');
         if (can('payroll.edit') && ['DRAFT', 'FOR_PRE_AUDIT', 'RETURNED_TO_PREPARER'].indexOf(r.Status) >= 0)
@@ -408,20 +452,69 @@ Pages.payroll = (function () {
     cancel: ['apiCancelPayroll', 'cancelled']
   };
 
+  /**
+   * Applies a filter state to the bar's controls without loading - either
+   * the params a navigation arrived with (a shared link, the global search
+   * box) or, when there were none, the signed-in role's own default view.
+   *
+   * Payroll In-Charge -> FOR_PRINTING is the concrete example the phase plan
+   * itself names for this task; Pre-Auditor -> FOR_PRE_AUDIT sorted by aging
+   * needs nothing here, because that role's default view is the dedicated
+   * Worklist screen (Pages.preaudit), not this generic list.
+   */
+  function applyFilterState(params) {
+    var hasParams = Object.keys(params || {}).length > 0;
+    var defaults = (!hasParams && App.session.role === 'Payroll In-Charge')
+      ? { Status: 'FOR_PRINTING' } : {};
+    var f = Object.assign({}, defaults, params || {});
+
+    document.getElementById('pr-search').value = f.search || '';
+    document.getElementById('pr-f-period').value = f.PeriodID || '';
+    document.getElementById('pr-f-office').value = f.OfficeCode || '';
+    document.getElementById('pr-f-status').value = f.Status || '';
+    document.getElementById('pr-f-sort').value = f.sort || 'created';
+    direction = f.direction === 'ASC' ? 'ASC' : 'DESC';
+    updateDirectionButton();
+  }
+
+  function updateDirectionButton() {
+    document.getElementById('pr-f-direction-icon').textContent =
+      direction === 'ASC' ? 'arrow_upward' : 'arrow_downward';
+    document.getElementById('pr-f-direction-label').textContent =
+      direction === 'ASC' ? 'Oldest/lowest first' : 'Newest/highest first';
+  }
+
   return {
-    init: function () {
+    init: function (params) {
       var lk = App.lookups;
       document.getElementById('pr-f-period').innerHTML =
         options(lk.periods, 'PeriodID', 'PeriodID', '', 'All Periods');
-      document.getElementById('pr-f-office').innerHTML =
-        options(lk.offices, 'OfficeCode', 'OfficeCode', '', 'All Offices');
       document.getElementById('pr-f-status').innerHTML =
         options(lk.payrollStatuses, null, null, '', 'All Status');
+      document.getElementById('pr-f-sort').innerHTML =
+        SORTS.map(function (s) { return '<option value="' + s[0] + '">' + esc(s[1]) + '</option>'; }).join('');
+
+      // The office filter is scoped - apiGetPayrollFacets(), never the
+      // citywide App.lookups.offices - so this dropdown can never offer an
+      // office the caller could not already see a payroll for. Loaded before
+      // applyFilterState() sets its value, so a shared link or a role
+      // default naming an office is not silently dropped by an empty list.
+      busy(api('apiGetPayrollFacets')).then(function (facets) {
+        document.getElementById('pr-f-office').innerHTML =
+          options(facets.OfficeCode || [], null, null, '', 'All Offices (in your scope)');
+        applyFilterState(params);
+        loadList();
+      });
 
       document.getElementById('pr-search').oninput = debounce(loadList);
-      ['pr-f-period', 'pr-f-office', 'pr-f-status'].forEach(function (id) {
+      ['pr-f-period', 'pr-f-office', 'pr-f-status', 'pr-f-sort'].forEach(function (id) {
         document.getElementById(id).onchange = loadList;
       });
+      document.getElementById('pr-f-direction').onclick = function () {
+        direction = direction === 'ASC' ? 'DESC' : 'ASC';
+        updateDirectionButton();
+        loadList();
+      };
 
       var add = document.getElementById('pr-add');
       add.style.display = can('payroll.edit') ? '' : 'none';
@@ -469,7 +562,9 @@ Pages.payroll = (function () {
       document.getElementById('pr-save').onclick = save;
 
       showEditor(false);
-      loadList();
+      // loadList() itself runs once apiGetPayrollFacets() resolves, above -
+      // not here too, or the list would render once against an empty office
+      // dropdown and again a moment later against the real one.
     },
     open: openEditor,
     view: viewPayroll,

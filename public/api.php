@@ -25,6 +25,9 @@ const ROUTES = [
 
     // Dashboard
     'apiGetDashboard' => ['dashboard.view', 'Dashboard', ''],
+    // Every role holds dashboard.view; apiGlobalSearch checks each candidate
+    // entity's own permission itself, so this only gates "signed in at all".
+    'apiGlobalSearch' => ['dashboard.view', 'Dashboard', ''],
 
     // Employees
     'apiListEmployees' => ['employee.view', 'Employees', ''],

@@ -616,7 +616,7 @@ proof, and a live HTTP re-run of the exact approval that surfaced it — `Logs.D
 
 ## Phase 9 — Filters, Search & Dashboards
 
-**Status:** IN PROGRESS — 9A, 9B, 9C and 9D done, 9E outstanding
+**Status:** DONE — 9A–9E landed; see "What landed in 9E" for the UI scope actually shipped versus what remains a Backlog item
 **Depends on:** Phases 1–8 stable
 
 ### Objective
@@ -918,6 +918,89 @@ seeded with `=2+2 formula attempt` in `Remarks` came back in the CSV as `'=2+2 f
 
 Suite is 595 tests.
 
+### What landed in 9E (2026-08-31)
+
+**A real bug the earlier sub-phases could not have caught, because it lived entirely in the SPA:**
+the Payroll and Employees list screens' own Office filter dropdowns were built from
+`apiGetLookups`'s citywide `offices` list — the same unscoped reference data an edit form
+legitimately uses to let any office be assigned — never from `apiGetPayrollFacets()` or
+`apiGetEmployeeFacets()`, the scoped endpoints 9A and 9B built for exactly this. An office-scoped
+user's filter bar has been offering every office in the city, the whole time those endpoints
+existed unused. Both are now wired to the scoped facet, verified over real HTTP with a headless
+browser: an Office Head's dropdown lists only their own granted office, never the other one seeded
+alongside it.
+
+**URL state**, the task's own wording: `app.js` gained hash-based routing — `#payroll?Status=DRAFT`
+— with two calls doing all of it. `syncUrl(page, params)` rewrites the address bar via
+`history.replaceState()`, which fires no `hashchange`, so a filter bar can call it after every
+keystroke without re-triggering navigation; `goToPage(page, params)` is the one path every real
+navigation goes through — the sidebar, a dashboard watchlist card, the global search box — so
+there is one code path rather than one that also has to be replayed by the `hashchange` listener
+for the back button and pasted links. Applied fully to Payroll (search, period, office, status,
+sort, direction all round-trip through the URL) and, more lightly, to Employees and the Documents
+tabs (search, status, and — for Documents — which tab).
+
+**Payroll got the full treatment, the same "one entity end to end" precedent 9A set**: a sort
+dropdown and direction toggle over `FilterSpec::SORTS['Payroll']`'s own UI words, and an Export CSV
+link that reads the filter bar's current state — never a second copy of it — so the download is
+always what the screen is showing, per `public/export.php`'s own discipline from 9D.
+
+**Saved default views per role**, the task's second concrete example: **Payroll In-Charge →
+`FOR_PRINTING`** is applied in `Pages.payroll`'s `init()` when a navigation arrives with no filter
+state at all — a fresh sidebar click, not a shared link or a search result, which both carry their
+own explicit filters and must not be overridden. **Pre-Auditor → `FOR_PRE_AUDIT` sorted by aging**
+needed no new code: `Pages.preaudit`'s Worklist (`apiGetWorklist`, Phase 7) already *is* that
+default view, and always has been — it is a dedicated screen rather than a generic list with a
+default filter, so there was nothing for this sub-phase to wire up.
+
+**The four watchlists finally have a screen.** 9C built the query layer with no UI at all; the
+dashboard now renders all four as compact cards — bio exemptions, stale memoranda, contracts
+against the currently open period, and suspensions past deadline — each gated on exactly the
+permission its own `apiGet*Watchlist` route already requires, so a card is only ever offered to a
+role that could also reach it directly. Suspensions has no standalone filterable screen to link
+to — a suspension is read from within the payroll it was raised against — so its card shows the
+rows inline with no "View all" link, except for a role holding `payroll.approve`, which gets one to
+the Worklist.
+
+**The citywide panel is `aggregate.citywide` made visible**: absent from the DOM entirely for every
+role but Internal Auditor and Admin, not merely hidden by CSS, mirroring the API layer's own
+all-or-nothing gate from 9D.
+
+**Global control-number search** is new both ends: `apiGlobalSearch()` tries a term as an exact
+match against each entity's own control-number-shaped facet — `PayrollNo`, a memo's `ControlNo`, a
+`TravelOrderNo`, a `ContractID`, an `EmployeeNo` — through that entity's own scoped `search()`,
+stopping at the first hit. A term matching a record outside the caller's grant returns
+`found: false`, never a refusal, for the reason FilterScopeTest already established: a refusal
+would confirm the record exists. Verified live: an Office Head searching the *other* seeded
+office's payroll number gets exactly the same `found: false` a typo would. Deliberately narrow —
+suspensions and bio exemptions have no standalone filterable screen to jump to, so they are not
+candidates.
+
+**Verified with a headless browser over real HTTP, not read off the source alone**: this sandbox
+cannot reach the CDNs the SPA loads Bootstrap and Google Charts from, so the verification script
+serves small local stand-ins for exactly the two calls app.js and dashboard.php make into them
+(`bootstrap.Toast`/`Modal`, `google.charts`/`visualization`) and everything else runs unmodified
+against a live MariaDB and the demo seed. The Office Head's Payroll and Employees filter dropdowns
+were checked to contain the granted office and nothing else; a shared link was checked to reopen
+the same filters; the citywide panel and watchlist cards were checked present or absent by role;
+the global search's own scope-safety was checked live. This surfaced the office-filter disclosure
+bug above — a defect no unit or integration test could see, since the query layer underneath it
+was correct the whole time.
+
+**What this sub-phase did not attempt, on record rather than silently**: the original Task list's
+full "Who/What/When/State/Who acted" facet breadth was not built out for every entity — Payroll
+already had it from 9A, and the other six get what their screens already offered (search and
+status) plus the fixes above, not a net-new faceted-filter UI apiece. Suspensions has no dedicated
+list screen at all, filterable or otherwise. TravelOrders, BioExemptions and Contracts share
+Documents' search/status bar and export button but not Payroll's sort control. None of this
+narrows the exit gate, which is about disclosure and watchlist correctness and holds for
+everything actually shipped — it is scope a future session can pick up screen by screen, the same
+way 9A took Payroll first and 9B took the rest.
+
+Suite is 595 tests (9E added no new PHP tests of its own; its verification is the live-HTTP run
+above, in the same spirit as print.php's — no automated test exists for a public/*.php entry point
+in this tree, and export.php set that precedent in 9D).
+
 ---
 
 ## Phase 10 — UAT & Cutover
@@ -1000,6 +1083,16 @@ One live payroll period processed end-to-end with zero manual override needed.
   deliberate citywide read in the tree that carries no comment saying it is deliberate, which is
   exactly how the next reader "fixes" it or, worse, copies the pattern somewhere it is not
   intended. Wants a comment at the query and a line in `ROLES.md`, not a code change.
+- **9E's UI scope stopped short of every entity, on purpose and on record.** *(2026-08-31.)*
+  Payroll got the full treatment — sort control, URL state, CSV export — and TravelOrders,
+  BioExemptions, Contracts and Memorandum share Documents' search/status bar and export button but
+  not Payroll's sort UI or the full "Who/What/When/State/Who acted" facet breadth the phase's Task
+  list describes. **Suspensions has no standalone list screen at all**, filterable or otherwise —
+  a suspension is read from within the payroll it was raised against, and the dashboard watchlist
+  card shows its rows inline rather than linking anywhere for that reason. None of this narrows
+  the exit gate, which is about disclosure and watchlist correctness and holds for everything
+  shipped; it is UI breadth a future session can pick up screen by screen, the same way 9A took
+  Payroll first and 9B took the rest.
 
 ---
 
@@ -1035,3 +1128,4 @@ One live payroll period processed end-to-end with zero manual override needed.
 | 2026-08-29 | **Re-audit against this plan. The suite could not run at all** — `vendor/` was absent, and once installed all 156 integration tests skipped because `digos_payroll_test` did not exist. The working database was worse: the `0001` baseline with an empty `schema_migrations` and 24 migrations pending, so nothing built since Phase 1 could have run against it. Diffing it column-for-column against a throwaway `0001`-only database proved it was *exactly* the baseline rather than a drifted schema, so it was adopted and migrated rather than dropped — 14 tables to 30, every row kept, backup taken first. **`docs/ROLES.md` was wrong rather than merely stale.** `tools/generate-roles-doc.php` paired quotes over raw source, and the apostrophe in a comment reading "the encoder's day job" — sitting inside the Encoder's own block — desynced the pairing and consumed eight of that role's permission slots as punctuation. The published matrix showed the Encoder holding none of `attachment.edit`, `attachment.view`, `calendar.view`, `document.view`, `dtr.edit`, `dtr.view`, `print.run` or `shift.view`. It holds all eight. Enforcement was never affected — `app/Auth.php` is the live source and the application reads it directly — but the document anyone consults was wrong in the direction that understates access, and had been since the role remap. This is the defect `DatabaseAccessTest` hit in July, where prose about `DB::` matched the guard's own pattern, and it is fixed the same way: tokenise the comments out. The tool's `--check` had also compared CRLF on disk against LF in memory, reporting the file stale however current it was, which is the likeliest reason it was never wired into anything. `RolesDocTest` now runs it in the architecture suite. **The delete guards had fallen behind the foreign keys for the second time** (`0009` did it in July). Seven tables cascade from `Employees` and `apiDeleteEmployee` checked two, so deleting an employee also destroyed their travel orders, bio exemptions and pre-audit suspensions — each carrying its own control number, each cited by a finding that then outlived the record it named. Rather than patch it a second time, `CascadeGuardTest` reads the live schema and fails unless every `CASCADE` and `SET NULL` onto a deletable table is named in that endpoint or listed with the reason those rows are meant to go. Its first run found four more, all `SET NULL`, all silent: `apiDeleteUser` blanked `Payroll.PreparedByUser` and `Payroll.ApprovedByUser` — the two columns segregation of duties is checked against, leaving disbursed payrolls nobody had prepared or approved — plus `PrintLog.PrintedByUser` and `ScopeGrants.GrantedBy`; and `apiDeletePeriod` detached captured `DtrDays` from their period, which is precisely what Phase 3B's exit gate depends on. `apiDeleteDepartment` had no guard of any kind and flattened its child departments. All closed, each verified by removing the check and watching the test fail. The printed form's row count, `15` in five places, gained `PrintRowGeometryTest`. Four `CLAUDE.md` traps were corrected where the tree had moved and the notes had not, and `GAP_MAP.md` is now marked as the Phase 0 snapshot it is — 49 routes at `d777107`, 96 today — so it is not read as a current inventory. **`employee.delete` is decided: administrator-only, ratified.** The 2026-07-29 entry asked for a deliberate answer before Phase 7 and Phase 7 shipped without one. What changed in between is that the endpoint now refuses on six kinds of history rather than one, so the power withheld from HRMO is only ever the removal of an employee nothing points at. Suite is 471 tests.
 | 2026-08-30 | **Phase 9C: the four standing watchlists.** `Digos\Domain\Query\Watchlists` is pure and fixture-tested in the same shape as `FilterSql` — bio exemptions expiring within 15 days, contracts ending by a payroll period's end, open-ended memoranda untouched 6 months, suspensions past their deadline — each a `{sql, params}` fragment a repository composes as `WHERE (scope) AND (watchlist)`, never folded into `FilterSpec`'s facet map since a caller does not choose one from a payload. The bio-exemption window has a lower bound as well as an upper one, or the same predicate would also list exemptions that lapsed months ago; the contract predicate deliberately has none, since a contract still `Active` past its own `EndDate` is the problem the watchlist exists to catch, not a reason to exclude it. The memo and suspension predicates are exactly what Phase 9's planning decided on 2026-08-29. Four repository methods and four read-only routes, each gated on its entity's existing view permission; the one clock read stays in the imperative shell, isolated the way `ScopeGateway::today()` already is, so the pure layer takes "today" as a parameter. `tests/Integration/WatchlistTest.php` plants fixture rows at each boundary — the day of, one day inside, one day outside — and one row per entity in a second office, verified against a live MariaDB 10.11 instance rather than assumed. Suite is 570 tests.
 | 2026-08-31 | **Phase 9D: exports, and the citywide aggregate.** `public/export.php` calls the exact same `apiList*` function the SPA's own screen calls for all seven `FilterSpec` entities and turns the result into CSV — no second query, so the 2026-07-30 `printBundle()` leak shape is structurally unavailable rather than merely avoided. `tests/Architecture/ExportTableTest.php` guards the one thing that still has to be duplicated (the permission, since `public/api.php`'s `ROUTES` is executable and cannot be included) against drifting from the original. `Digos\Domain\Query\Csv` is pure and fixture-tested — RFC 4180 quoting, and formula-injection neutralisation on every cell, since this export carries free text nobody has reviewed for a leading `=`/`+`/`-`/`@`. The header names the active filters via `FilterSpec::describe()`, built from the same `conditions()` the query already computed. **`PayrollRepo::citywideTotals()` is the phase's one deliberate unscoped read**, grouped by `OfficeCode` with no scope predicate at all — the same shape `apiGetLogs` already was, except this one is commented as deliberate and gated by name: `aggregate.citywide`, decided 2026-08-29, held by Internal Auditor and nobody else below Admin's `*`. **A latent bug surfaced by a code comment, not by the feature itself**: an apostrophe next to the new permission in `app/Auth.php` desynced `RouteTableTest`'s own quote-matching regex, the identical defect `docs/ROLES.md`'s generator had in July — fixed the same way, by having that parser read `SourceTree::readCode()` instead of raw source, rather than by rewording the comment to dodge it. Verified over real HTTP against a local MariaDB and the demo seed: a scoped Office Head's export contained only their own office's row, and the same account's attempt at the citywide total and at exporting an entity they lack the permission for were both refused; a payroll seeded with `=2+2 formula attempt` in `Remarks` came back `'=2+2 formula attempt`. Suite is 595 tests.
+| 2026-08-31 | **Phase 9E: the UI, and a real disclosure bug it found.** Payroll and Employees' Office filter dropdowns were built from `apiGetLookups`'s citywide office list rather than the scoped `apiGetPayrollFacets()`/`apiGetEmployeeFacets()` 9A and 9B built for exactly this — an office-scoped user's filter bar had been offering every office in the city since those endpoints existed, unused. Both fixed and verified live: an Office Head's dropdown now lists only their granted office. `app.js` gained hash-based URL state — `syncUrl()` rewrites the address bar via `replaceState()` without navigating, `goToPage()` is the one path every real navigation goes through — applied fully to Payroll (search, period, office, status, sort, direction) and more lightly to Employees and the Documents tabs. Payroll also got a sort control and an Export CSV link reading the filter bar's own state. **Saved default views**: Payroll In-Charge → `FOR_PRINTING` is new, applied only when a navigation arrives with no filters at all; Pre-Auditor → `FOR_PRE_AUDIT` sorted by aging needed nothing, since `Pages.preaudit`'s Worklist already *is* that default view. The four watchlists (9C) and the citywide aggregate (9D) finally have a screen: dashboard cards per watchlist, each gated on its own route's permission, and a citywide panel absent from the DOM entirely for anyone but Internal Auditor and Admin. New both ends: `apiGlobalSearch()`, an exact match against each entity's own control-number facet through its own scoped `search()`, returning `found: false` rather than a refusal for a record outside the caller's grant — verified live that an Office Head searching another office's payroll number gets exactly that. **Verified with a headless browser against a live MariaDB**, not read off the source: this sandbox cannot reach the CDNs the SPA loads Bootstrap and Google Charts from, so the check serves small local stand-ins for those two calls and runs everything else unmodified — which is what surfaced the office-filter bug above, a defect no unit or integration test could have seen since the query layer beneath it was already correct. Recorded rather than hidden: the full "Who/What/When/State/Who acted" facet breadth was not built out for every entity, and Suspensions has no dedicated list screen at all — none of it narrows the exit gate, which holds for everything actually shipped. Suite is 595 tests (unchanged; 9E's verification is the live-HTTP run, the same shape print.php and export.php already set for a public/*.php entry point).
