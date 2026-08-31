@@ -233,8 +233,19 @@ Pages.reports = (function () {
       var lk = App.lookups;
       document.getElementById('rp-period').innerHTML =
         options(lk.periods, 'PeriodID', 'PeriodID', '', 'All Periods');
-      document.getElementById('rp-office').innerHTML =
-        options(lk.offices, 'OfficeCode', 'OfficeName', '', 'All Offices');
+
+      // Scoped - apiGetPayrollFacets(), never the citywide App.lookups.offices
+      // - so this dropdown can never offer an office the caller has no report
+      // rows for. Every role holding report.view also holds payroll.view (the
+      // permission this facet endpoint itself requires), so this never hits a
+      // wall for anyone who can reach this screen. The reports engine already
+      // scopes its rows through Payroll (see reportContext() in
+      // app/Reports.php); this is the same scope, reused for the dropdown
+      // rather than a second one for Reports alone.
+      api('apiGetPayrollFacets').then(function (facets) {
+        document.getElementById('rp-office').innerHTML =
+          options(facets.OfficeCode || [], null, null, '', 'All Offices (in your scope)');
+      });
 
       // Employee dropdown only matters for the history report.
       document.getElementById('rp-type').onchange = function () {
