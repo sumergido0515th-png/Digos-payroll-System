@@ -111,7 +111,7 @@ appears here by accident rather than by decision.
 - `period.edit` — apiDeletePeriod, apiSavePeriod
 - `period.view` — apiListPeriods
 - `print.run` — apiGetPrintHtml, apiMarkPrinted, apiQueueForPrinting
-- `report.view` — apiRunReport
+- `report.view` — apiGetOperationalMetrics, apiRunReport
 - `scope.manage` — apiDeleteScopeGrant, apiGetScopeDimensions, apiListScopeGrants, apiSaveScopeGrant
 - `settings.edit` — apiApplyBackupSchedule, apiSaveSettings, apiUploadImageSetting
 - `settings.view` — apiGetSettings

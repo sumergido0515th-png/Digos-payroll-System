@@ -54,6 +54,55 @@
       </table>
     </div>
   </div>
+
+  <!-- Operational metrics - Phase 10's baseline (docs/PHASE_PLAN.md: reprint
+       rate, top suspension grounds, settlement turnaround, pages printed).
+       Scoped to the caller like every other read here; a citywide figure
+       follows from a citywide scope grant, not from a separate screen. -->
+  <div class="card mt-3">
+    <div class="card-header py-2">Operational Metrics <small class="text-muted">(Phase 10 baseline)</small></div>
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">From</label>
+          <input type="date" class="form-control form-control-sm" id="om-from"></div>
+        <div class="col-md-3"><label class="form-label">To</label>
+          <input type="date" class="form-control form-control-sm" id="om-to"></div>
+        <div class="col-md-3">
+          <button class="btn btn-sm btn-gov" id="om-run">
+            <span class="material-icons" style="font-size:18px;vertical-align:-4px">insights</span>
+            Compute</button>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-2" id="om-tiles" style="display:none">
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Official prints</div>
+          <div class="fs-4 fw-bold" id="om-prints">-</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Reprint rate</div>
+          <div class="fs-4 fw-bold" id="om-reprint-rate">-</div>
+          <div class="text-muted small" id="om-reprint-count"></div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Pages printed <span class="text-muted" title="Every Payroll form is exactly one page; other forms count as at least one - an undercount, never an overcount">(est.)</span></div>
+          <div class="fs-4 fw-bold" id="om-pages">-</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Avg. settlement turnaround</div>
+          <div class="fs-4 fw-bold" id="om-turnaround">-</div>
+          <div class="text-muted small" id="om-settled-count"></div>
+        </div>
+      </div>
+
+      <div class="mt-3" id="om-grounds-wrap" style="display:none">
+        <div class="text-muted small mb-1">Top suspension grounds</div>
+        <table class="table table-sm mb-0" style="max-width:420px">
+          <tbody id="om-grounds"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </section>
 
 <script>
@@ -147,6 +196,38 @@ Pages.reports = (function () {
     w.document.close();
   }
 
+  /** Formats a duration in hours as "Xd Yh" (or "-" when there is nothing settled to average). */
+  function fmtTurnaround(hours) {
+    if (hours === null || hours === undefined) return '-';
+    var days = Math.floor(hours / 24);
+    var rem = Math.round(hours - days * 24);
+    return (days ? days + 'd ' : '') + rem + 'h';
+  }
+
+  /** Runs apiGetOperationalMetrics() over the chosen date range and renders the tiles. */
+  function runOperationalMetrics() {
+    var payload = {
+      From: document.getElementById('om-from').value,
+      To: document.getElementById('om-to').value
+    };
+    busy(api('apiGetOperationalMetrics', payload)).then(function (m) {
+      document.getElementById('om-tiles').style.display = '';
+      document.getElementById('om-prints').textContent = m.officialPrints;
+      document.getElementById('om-reprint-rate').textContent = (m.reprintRate * 100).toFixed(1) + '%';
+      document.getElementById('om-reprint-count').textContent =
+        m.reprints + ' of ' + m.officialPrints + ' print(s)';
+      document.getElementById('om-pages').textContent = m.pagesPrinted;
+      document.getElementById('om-turnaround').textContent = fmtTurnaround(m.averageTurnaroundHours);
+      document.getElementById('om-settled-count').textContent = m.settledCount + ' settled suspension(s)';
+
+      var groundsWrap = document.getElementById('om-grounds-wrap');
+      groundsWrap.style.display = m.topGrounds.length ? '' : 'none';
+      document.getElementById('om-grounds').innerHTML = m.topGrounds.map(function (g) {
+        return '<tr><td>' + esc(g.GroundCode) + '</td><td class="text-end">' + g.Count + '</td></tr>';
+      }).join('');
+    });
+  }
+
   return {
     init: function () {
       var lk = App.lookups;
@@ -169,6 +250,7 @@ Pages.reports = (function () {
       document.getElementById('rp-run').onclick = run;
       document.getElementById('rp-csv').onclick = downloadCsv;
       document.getElementById('rp-print').onclick = printReport;
+      document.getElementById('om-run').onclick = runOperationalMetrics;
     }
   };
 })();

@@ -141,6 +141,7 @@ const ROUTES = [
 
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
+    'apiGetOperationalMetrics' => ['report.view', 'Reports', ''],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],
 
     // Users & logs (Administrator only via '*')

@@ -8,13 +8,16 @@
 
 declare(strict_types=1);
 
+use Digos\Domain\Reports\OperationalMetrics;
 use Digos\Domain\Workflow\PayrollWorkflow;
 use Digos\Repo\ContractRepo;
 use Digos\Repo\EmployeeDocumentRepo;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\MemorandumRepo;
 use Digos\Repo\PayrollRepo;
+use Digos\Repo\PrintLogRepo;
 use Digos\Repo\ReferenceRepo;
+use Digos\Repo\SuspensionRepo;
 
 /* ==========================================================================
  * Dashboard
@@ -131,6 +134,43 @@ function apiGlobalSearch(array $p, array $user): array
     }
 
     return ['found' => false, 'term' => $term];
+}
+
+/* ==========================================================================
+ * Operational metrics (Phase 10 baseline)
+ * ======================================================================== */
+
+/**
+ * The reprint-rate, pages-printed, suspension-ground and settlement-
+ * turnaround figures docs/PHASE_PLAN.md names as the baseline to collect
+ * from Phase 10's live run - built ahead of that run rather than after it,
+ * so there is something to log against from the first day rather than a
+ * number reconstructed from raw tables once someone remembers it was asked
+ * for.
+ *
+ * Scoped to the caller the same way the rest of Reports.php already is -
+ * PrintLogRepo::officialPrintsScoped() and SuspensionRepo::activityScoped()
+ * both join through Payroll and apply ScopeGateway::where(), so an
+ * office-scoped role's figures cover only their own office's suspensions and
+ * prints. A citywide baseline follows from a citywide ScopeGrants row, the
+ * same as every other scoped read in this system - this endpoint has no
+ * separate citywide code path and does not touch `aggregate.citywide`, which
+ * gates a different, unscoped query (PayrollRepo::citywideTotals()).
+ *
+ * @param array<string, mixed> $p optional {From, To} dates bounding RaisedAt/PrintedAt
+ */
+function apiGetOperationalMetrics(array $p, array $user): array
+{
+    $from = nullableDate($p['From'] ?? null, 'From');
+    $to = nullableDate($p['To'] ?? null, 'To');
+    if ($from !== null && $to !== null && $to < $from) {
+        throw new RuntimeException('"To" cannot be before "From".');
+    }
+
+    return array_merge(
+        OperationalMetrics::printActivity(PrintLogRepo::officialPrintsScoped($user, $from, $to)),
+        OperationalMetrics::suspensionActivity(SuspensionRepo::activityScoped($user, $from, $to)),
+        ['from' => $from, 'to' => $to]);
 }
 
 /* ==========================================================================

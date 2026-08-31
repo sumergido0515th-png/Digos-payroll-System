@@ -117,6 +117,32 @@ final class SuspensionRepo
             array_merge($scope['params'], $watch['params']));
     }
 
+    /**
+     * Ground, raised and settled timestamps for suspensions in the caller's
+     * scope, optionally bounded by RaisedAt - the raw material for
+     * Digos\Domain\Reports\OperationalMetrics::suspensionActivity(), which
+     * does the counting. Every column that function reads and nothing else,
+     * so a caller cannot be handed more than the metric needs.
+     *
+     * @return array<int, array{GroundCode: string, RaisedAt: string, SettledAt: ?string}>
+     */
+    public static function activityScoped(array $user, ?string $from, ?string $to): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $clauses = [$scope['sql']];
+        $params = $scope['params'];
+
+        if ($from !== null) { $clauses[] = 's.RaisedAt >= ?'; $params[] = $from; }
+        // Inclusive of the whole day named, the same "to the 16th means through
+        // the 16th" reasoning FilterSql applies to a DATETIME column.
+        if ($to !== null) { $clauses[] = 's.RaisedAt < ? + INTERVAL 1 DAY'; $params[] = $to; }
+
+        return DB::rows(
+            'SELECT s.GroundCode, s.RaisedAt, s.SettledAt FROM ' . self::FROM . '
+              WHERE ' . implode(' AND ', $clauses),
+            $params);
+    }
+
     /** Open suspensions for one payroll, unscoped - the caller already holds it. */
     public static function openFor(string $payrollNo): array
     {

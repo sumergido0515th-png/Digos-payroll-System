@@ -1005,7 +1005,9 @@ in this tree, and export.php set that precedent in 9D).
 
 ## Phase 10 — UAT & Cutover
 
-**Status:** NOT STARTED
+**Status:** BLOCKED ON THE LIVE RUN — the metrics baseline is built (2026-08-31); everything else in
+this phase is organizational, not engineering, and cannot be executed from a coding session. See
+"What landed" below.
 **Depends on:** All prior phases
 
 ### Objective
@@ -1022,6 +1024,54 @@ One fully processed real payroll period through the new system, zero manual over
 
 ### Exit Gate
 One live payroll period processed end-to-end with zero manual override needed.
+
+### What landed (2026-08-31)
+
+`EXECUTION_BUDGET.md` calls this phase what it is: "Mostly not a coding phase. Budget for defect
+turnaround, not construction." Three of its four tasks need a real live payroll period run by City
+Government staff and sign-off from human stakeholders — none of that is achievable from this
+session, and nothing here claims otherwise. What was buildable ahead of that run: the metrics
+collection code, so the baseline exists to log against from the first day of a live run rather than
+being reconstructed from raw tables afterward once someone remembers this task asked for one.
+
+`Digos\Domain\Reports\OperationalMetrics` is pure and fixture-tested, the Phase 4/6 shape: two
+functions, `printActivity()` and `suspensionActivity()`, taking rows a repository already scoped
+and returning the four Post-Launch Metrics below. A **reprint** is defined exactly the way
+`app/PrintDoc.php`'s `recordOfficialPrint()` already enforces server-side — the second-or-later
+Official print of the same `(PayrollNo, Form)` pair, the same print a reprint reason is required
+for — computed by grouping and ranking rows in PHP rather than a SQL window function, so the
+definition lives in one place fixtures can prove rather than also being trusted to run the same way
+on both MariaDB versions this deployment targets. **Pages printed is an estimate, and says so**:
+the Payroll form is capped at a fixed row count per transaction (`PRINT_ROWS`, load-bearing in the
+five other places CLAUDE.md's own trap names), so it is exactly one page every time — no other form
+carries that guarantee, so every print counts as one page, an undercount for any form that grows
+past its own minimum rows and never an overcount, the safe direction to be wrong in for a metric
+whose point is showing paper use going down. Settlement turnaround is averaged only across
+suspensions that have actually been settled, and a corrupted settlement timestamp before its own
+raise time is excluded rather than counted negative.
+
+Two repository methods supply the scoped rows — `PrintLogRepo::officialPrintsScoped()` and
+`SuspensionRepo::activityScoped()`, both joined through `Payroll` and `ScopeGateway::where()`
+exactly the way the rest of this system already reads print and suspension history, with an
+optional date range. `apiGetOperationalMetrics` composes both, gated on `report.view` like the rest
+of `Reports.php`; a citywide figure follows from a citywide scope grant the same way every other
+scoped read in this system works, not from a separate code path or from `aggregate.citywide`, which
+gates a different, deliberately unscoped query. A card on the existing Reports screen runs it over
+a chosen date range — reusing that screen rather than building a new one, since this is a handful
+of figures, not a tabular report.
+
+**Two pre-existing gaps found and fixed while building this, both load-bearing for the tests that
+would otherwise silently not run them**: `tests/Integration/ApplicationLayer.php` never loaded
+`app/Reports.php` at all — any integration test calling `apiGetDashboard()` or `apiRunReport()`
+directly would have fatally errored, or silently passed only because some other test in the same
+process happened to load the file first, the identical failure mode `PrintDoc.php`'s own entry
+in that file already documents from when *it* went missing. Fixed by adding the require in the same
+position `app/bootstrap.php` uses. Verified over real HTTP: an Office Head's figures covered only
+their own office's prints and suspensions; Admin's covered both; a `To` before `From` was refused;
+and the Reports screen's new card rendered the same numbers a headless browser could read off the
+page.
+
+Suite is 614 tests.
 
 ---
 
@@ -1129,3 +1179,4 @@ One live payroll period processed end-to-end with zero manual override needed.
 | 2026-08-30 | **Phase 9C: the four standing watchlists.** `Digos\Domain\Query\Watchlists` is pure and fixture-tested in the same shape as `FilterSql` — bio exemptions expiring within 15 days, contracts ending by a payroll period's end, open-ended memoranda untouched 6 months, suspensions past their deadline — each a `{sql, params}` fragment a repository composes as `WHERE (scope) AND (watchlist)`, never folded into `FilterSpec`'s facet map since a caller does not choose one from a payload. The bio-exemption window has a lower bound as well as an upper one, or the same predicate would also list exemptions that lapsed months ago; the contract predicate deliberately has none, since a contract still `Active` past its own `EndDate` is the problem the watchlist exists to catch, not a reason to exclude it. The memo and suspension predicates are exactly what Phase 9's planning decided on 2026-08-29. Four repository methods and four read-only routes, each gated on its entity's existing view permission; the one clock read stays in the imperative shell, isolated the way `ScopeGateway::today()` already is, so the pure layer takes "today" as a parameter. `tests/Integration/WatchlistTest.php` plants fixture rows at each boundary — the day of, one day inside, one day outside — and one row per entity in a second office, verified against a live MariaDB 10.11 instance rather than assumed. Suite is 570 tests.
 | 2026-08-31 | **Phase 9D: exports, and the citywide aggregate.** `public/export.php` calls the exact same `apiList*` function the SPA's own screen calls for all seven `FilterSpec` entities and turns the result into CSV — no second query, so the 2026-07-30 `printBundle()` leak shape is structurally unavailable rather than merely avoided. `tests/Architecture/ExportTableTest.php` guards the one thing that still has to be duplicated (the permission, since `public/api.php`'s `ROUTES` is executable and cannot be included) against drifting from the original. `Digos\Domain\Query\Csv` is pure and fixture-tested — RFC 4180 quoting, and formula-injection neutralisation on every cell, since this export carries free text nobody has reviewed for a leading `=`/`+`/`-`/`@`. The header names the active filters via `FilterSpec::describe()`, built from the same `conditions()` the query already computed. **`PayrollRepo::citywideTotals()` is the phase's one deliberate unscoped read**, grouped by `OfficeCode` with no scope predicate at all — the same shape `apiGetLogs` already was, except this one is commented as deliberate and gated by name: `aggregate.citywide`, decided 2026-08-29, held by Internal Auditor and nobody else below Admin's `*`. **A latent bug surfaced by a code comment, not by the feature itself**: an apostrophe next to the new permission in `app/Auth.php` desynced `RouteTableTest`'s own quote-matching regex, the identical defect `docs/ROLES.md`'s generator had in July — fixed the same way, by having that parser read `SourceTree::readCode()` instead of raw source, rather than by rewording the comment to dodge it. Verified over real HTTP against a local MariaDB and the demo seed: a scoped Office Head's export contained only their own office's row, and the same account's attempt at the citywide total and at exporting an entity they lack the permission for were both refused; a payroll seeded with `=2+2 formula attempt` in `Remarks` came back `'=2+2 formula attempt`. Suite is 595 tests.
 | 2026-08-31 | **Phase 9E: the UI, and a real disclosure bug it found.** Payroll and Employees' Office filter dropdowns were built from `apiGetLookups`'s citywide office list rather than the scoped `apiGetPayrollFacets()`/`apiGetEmployeeFacets()` 9A and 9B built for exactly this — an office-scoped user's filter bar had been offering every office in the city since those endpoints existed, unused. Both fixed and verified live: an Office Head's dropdown now lists only their granted office. `app.js` gained hash-based URL state — `syncUrl()` rewrites the address bar via `replaceState()` without navigating, `goToPage()` is the one path every real navigation goes through — applied fully to Payroll (search, period, office, status, sort, direction) and more lightly to Employees and the Documents tabs. Payroll also got a sort control and an Export CSV link reading the filter bar's own state. **Saved default views**: Payroll In-Charge → `FOR_PRINTING` is new, applied only when a navigation arrives with no filters at all; Pre-Auditor → `FOR_PRE_AUDIT` sorted by aging needed nothing, since `Pages.preaudit`'s Worklist already *is* that default view. The four watchlists (9C) and the citywide aggregate (9D) finally have a screen: dashboard cards per watchlist, each gated on its own route's permission, and a citywide panel absent from the DOM entirely for anyone but Internal Auditor and Admin. New both ends: `apiGlobalSearch()`, an exact match against each entity's own control-number facet through its own scoped `search()`, returning `found: false` rather than a refusal for a record outside the caller's grant — verified live that an Office Head searching another office's payroll number gets exactly that. **Verified with a headless browser against a live MariaDB**, not read off the source: this sandbox cannot reach the CDNs the SPA loads Bootstrap and Google Charts from, so the check serves small local stand-ins for those two calls and runs everything else unmodified — which is what surfaced the office-filter bug above, a defect no unit or integration test could have seen since the query layer beneath it was already correct. Recorded rather than hidden: the full "Who/What/When/State/Who acted" facet breadth was not built out for every entity, and Suspensions has no dedicated list screen at all — none of it narrows the exit gate, which holds for everything actually shipped. Suite is 595 tests (unchanged; 9E's verification is the live-HTTP run, the same shape print.php and export.php already set for a public/*.php entry point).
+| 2026-08-31 | **Phase 10 metrics baseline — the only piece of Phase 10 that is engineering.** `EXECUTION_BUDGET.md` already called this phase "mostly not a coding phase"; three of its four tasks need a real live payroll period and human sign-off, neither achievable from a session. What was buildable ahead of that run: `Digos\Domain\Reports\OperationalMetrics`, pure and fixture-tested, computing the four Post-Launch Metrics from rows a repository already scoped. A **reprint** is defined exactly as `recordOfficialPrint()` already enforces server-side — the second-or-later Official print of the same `(PayrollNo, Form)` pair — ranked in PHP rather than a SQL window function so the definition lives in one fixture-provable place. **Pages printed is an estimate and says so**: the Payroll form is capped at a fixed row count (`PRINT_ROWS`, load-bearing in five other places per CLAUDE.md's own trap) so it is always exactly one page, but no other form carries that guarantee, so every print counts as one page — an undercount, never an overcount. `PrintLogRepo::officialPrintsScoped()` and `SuspensionRepo::activityScoped()` supply the scoped rows, both joined through `Payroll` and `ScopeGateway::where()`; `apiGetOperationalMetrics` composes them, gated on `report.view`, with a card on the existing Reports screen rather than a new one. **Found and fixed along the way**: `tests/Integration/ApplicationLayer.php` never loaded `app/Reports.php` at all — the identical failure mode its own `PrintDoc.php` entry already documents, where a missing require is invisible in a full run because some other test happens to load the file first, and fatal the moment it runs alone. Verified over real HTTP with a headless browser: an Office Head's figures covered only their own office, Admin's covered both, and the Reports screen's card rendered the same numbers. Suite is 614 tests.

@@ -28,6 +28,7 @@ require_once __DIR__ . '/Domain/Rules/Finding.php';
 require_once __DIR__ . '/Domain/Rules/RuleEngine.php';
 require_once __DIR__ . '/Domain/Workflow/PayrollWorkflow.php';
 require_once __DIR__ . '/Domain/Print/PayloadHash.php';
+require_once __DIR__ . '/Domain/Reports/OperationalMetrics.php';
 require_once __DIR__ . '/Domain/Import/SourceTable.php';
 require_once __DIR__ . '/Domain/Import/ColumnMap.php';
 require_once __DIR__ . '/Domain/Import/EntitySpec.php';

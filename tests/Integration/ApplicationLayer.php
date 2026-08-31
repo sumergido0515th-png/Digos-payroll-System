@@ -55,6 +55,7 @@ final class ApplicationLayer
             'app/Domain/Rules/RuleEngine.php',
             'app/Domain/Workflow/PayrollWorkflow.php',
             'app/Domain/Print/PayloadHash.php',
+            'app/Domain/Reports/OperationalMetrics.php',
             'app/Domain/Import/SourceTable.php',
             'app/Domain/Import/ColumnMap.php',
             'app/Domain/Import/EntitySpec.php',
@@ -91,6 +92,12 @@ final class ApplicationLayer
             'app/Calendar.php',
             'app/Attachments.php',
             'app/PreAudit.php',
+            // Reports.php was missing here too, for the same reason PrintDoc.php
+            // was (see below): nothing calling apiGetDashboard/apiRunReport in
+            // an integration test would have caught it, since PHP's require_once
+            // is process-wide and some other test loading the file first would
+            // have papered over the gap in a full run.
+            'app/Reports.php',
             // PrintDoc last, as app/bootstrap.php loads it. It was missing here
             // and PrintScopeTest still passed in a full run, because
             // tests/Unit/EmployeesFunctionTest.php requires the file and the
