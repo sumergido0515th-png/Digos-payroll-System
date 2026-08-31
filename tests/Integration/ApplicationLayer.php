@@ -61,6 +61,7 @@ final class ApplicationLayer
             'app/Domain/Query/FilterSpec.php',
             'app/Domain/Query/FilterSql.php',
             'app/Domain/Query/Watchlists.php',
+            'app/Domain/Query/Csv.php',
             'app/Repo/FacetOptions.php',
             'app/Repo/ScopeGrantRepo.php',
             'app/Repo/ScopeGateway.php',

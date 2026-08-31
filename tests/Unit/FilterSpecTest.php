@@ -284,4 +284,66 @@ final class FilterSpecTest extends TestCase
                 "The '$facet' dropdown offers choices that filter nothing.");
         }
     }
+
+    /* --------------------------------------------------------------- describe */
+
+    public function testNoConditionsDescribesAsNothing(): void
+    {
+        $this->assertSame([], FilterSpec::unfiltered('Payroll')->describe());
+    }
+
+    public function testAnExactConditionReadsAsAnEquality(): void
+    {
+        $spec = FilterSpec::fromPayload('Payroll', ['PayrollNo' => 'PR-1']);
+
+        $this->assertSame(['PayrollNo = PR-1'], $spec->describe());
+    }
+
+    public function testAMultiValueConditionListsEveryValue(): void
+    {
+        $spec = FilterSpec::fromPayload('Payroll', ['OfficeCode' => 'CMO,OCM']);
+
+        $this->assertSame(['OfficeCode in (CMO, OCM)'], $spec->describe());
+    }
+
+    public function testADateRangeReadsAsFromAndTo(): void
+    {
+        $spec = FilterSpec::fromPayload('Payroll',
+            ['CreatedFrom' => '2026-08-01', 'CreatedTo' => '2026-08-16']);
+
+        $this->assertSame(
+            ['DateCreated from 2026-08-01', 'DateCreated to 2026-08-16'], $spec->describe());
+    }
+
+    public function testSearchReadsAsItself(): void
+    {
+        $spec = FilterSpec::fromPayload('Payroll', ['search' => 'ana']);
+
+        $this->assertSame(['search: ana'], $spec->describe());
+    }
+
+    /**
+     * A joined facet's alias is stripped - a reader of an exported file has no
+     * reason to know a suspension's OfficeCode facet reads through Payroll.
+     */
+    public function testAJoinedFacetsAliasIsStrippedFromTheDescription(): void
+    {
+        $spec = FilterSpec::fromPayload('Suspensions', ['OfficeCode' => 'CMO']);
+
+        $this->assertSame(['OfficeCode in (CMO)'], $spec->describe());
+    }
+
+    /**
+     * describe() is built from conditions() alone, so no payload value it
+     * echoes back can be anything other than a value already normalised by
+     * FilterSpec's own facet map - the same guarantee FilterSqlTest asserts
+     * on the SQL side.
+     */
+    public function testEveryEntityDescribesWithoutError(): void
+    {
+        foreach (FilterSpec::entities() as $entity) {
+            $spec = FilterSpec::fromPayload($entity, ['search' => 'x']);
+            $this->assertIsArray($spec->describe());
+        }
+    }
 }

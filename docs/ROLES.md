@@ -22,6 +22,7 @@ reads nothing, whatever this table says.
 
 | Permission | Admin | HRMO | Payroll In-Charge | Pre-Auditor | Encoder | Office Head | Internal Auditor |
 |---|---|---|---|---|---|---|---|
+| `aggregate.citywide` | yes | - | - | - | - | - | yes |
 | `attachment.edit` | yes | yes | yes | - | yes | - | - |
 | `attachment.view` | yes | yes | yes | yes | yes | yes | yes |
 | `backup.run` | yes | - | - | - | - | - | - |
@@ -79,6 +80,7 @@ appears here by accident rather than by decision.
 ## Endpoints by permission
 
 - (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
+- `aggregate.citywide` — apiGetCitywidePayrollTotals
 - `attachment.edit` — apiDeleteAttachment, apiUploadAttachment
 - `attachment.view` — apiGetAttachment, apiGetCoverageMatrix, apiListAttachments
 - `backup.run` — apiBackupNow, apiListBackups, apiRestoreBackup

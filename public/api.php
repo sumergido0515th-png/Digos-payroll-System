@@ -78,6 +78,7 @@ const ROUTES = [
     'apiListSuspensions' => ['payroll.view', 'Suspensions', ''],
     'apiGetSuspensionFacets' => ['payroll.view', 'Suspensions', ''],
     'apiGetSuspensionWatchlist' => ['payroll.view', 'Suspensions', ''],
+    'apiGetCitywidePayrollTotals' => ['aggregate.citywide', 'Payroll', ''],
     'apiQueueForPrinting' => ['print.run', 'Payroll', 'QUEUE_FOR_PRINTING'],
     'apiMarkPrinted' => ['print.run', 'Payroll', 'MARK_PRINTED'],
     'apiGetWorklist' => ['payroll.approve', 'PreAudit', ''],

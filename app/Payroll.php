@@ -837,6 +837,17 @@ function apiGetSuspensionWatchlist(array $p, array $user): array
     return SuspensionRepo::pastDeadlineScoped($user, date('Y-m-d'));
 }
 
+/**
+ * Payroll totals by office, citywide - never scoped to the caller's own
+ * office. Gated on `aggregate.citywide` in the route table rather than
+ * `payroll.view`, since seeing every office's total is exactly what that
+ * separate permission exists to decide.
+ */
+function apiGetCitywidePayrollTotals(array $p, array $user): array
+{
+    return PayrollRepo::citywideTotals($p);
+}
+
 /** PRE_AUDIT_APPROVED -> FOR_PRINTING. Phase 8 attaches certification to the next step. */
 function apiQueueForPrinting(array $p, array $user): array
 {

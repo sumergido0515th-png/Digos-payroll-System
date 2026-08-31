@@ -431,6 +431,44 @@ final class FilterSpec
     }
 
     /**
+     * The active conditions, in words - "OfficeCode in (CMO)", "search: ana".
+     *
+     * For 9D's export header: the phase's task list calls for "active filters
+     * printed in header", and this is that sentence, built from the same
+     * conditions() every query already ran rather than re-reading the raw
+     * payload a second time. A joined facet's alias ("e.OfficeCode") is
+     * stripped - a reader of an exported file has no reason to know a
+     * suspension's OfficeCode facet reads through the payroll it was raised
+     * against.
+     *
+     * @return string[]
+     */
+    public function describe(): array
+    {
+        $lines = [];
+        foreach ($this->conditions as $condition) {
+            $lines[] = match ($condition['op']) {
+                'search' => 'search: ' . $condition['values'][0],
+                'exact' => self::unqualify($condition['column']) . ' = ' . $condition['values'][0],
+                'in' => self::unqualify($condition['column'])
+                    . ' in (' . implode(', ', $condition['values']) . ')',
+                'dateFrom', 'datetimeFrom' =>
+                    self::unqualify($condition['column']) . ' from ' . $condition['values'][0],
+                'dateTo', 'datetimeTo' =>
+                    self::unqualify($condition['column']) . ' to ' . $condition['values'][0],
+            };
+        }
+        return $lines;
+    }
+
+    /** "e.OfficeCode" -> "OfficeCode". A facet's own alias, never a payload value. */
+    private static function unqualify(string $column): string
+    {
+        $dot = strrpos($column, '.');
+        return $dot === false ? $column : substr($column, $dot + 1);
+    }
+
+    /**
      * The columns to sort by, in order.
      *
      * Several rather than one because a sort key is a UI word and some of them

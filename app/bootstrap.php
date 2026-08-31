@@ -34,6 +34,7 @@ require_once __DIR__ . '/Domain/Import/EntitySpec.php';
 require_once __DIR__ . '/Domain/Query/FilterSpec.php';
 require_once __DIR__ . '/Domain/Query/FilterSql.php';
 require_once __DIR__ . '/Domain/Query/Watchlists.php';
+require_once __DIR__ . '/Domain/Query/Csv.php';
 require_once __DIR__ . '/Repo/FacetOptions.php';
 require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
 require_once __DIR__ . '/Repo/ScopeGateway.php';

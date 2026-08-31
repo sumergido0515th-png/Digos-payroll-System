@@ -120,6 +120,14 @@ const PERMISSIONS = [
     'Internal Auditor' => [
         'dashboard.view', 'employee.view', 'office.view', 'timekeeper.view',
         'period.view', 'payroll.view', 'report.view', 'log.view',
+        // Phase 9 decision, 2026-08-29: the citywide total, not Office Head -
+        // that role's own comment above reads "sees their own office's
+        // records", and it is the role most likely to be ASKED for a
+        // citywide figure by someone senior, which is exactly what this
+        // permission makes refusable. It widens nothing this role does not
+        // already have: log.view is unscoped and already exposes every
+        // office's activity to the same person.
+        'aggregate.citywide',
         // Read-only oversight extends to the documents an audit is conducted
         // against, contracts included - the whole point of the role is to be
         // able to check the same things a pre-auditor checked.

@@ -160,11 +160,17 @@ final class RouteTableTest extends TestCase
      * would pull in the database and session layer, which the architecture
      * suite exists to run without.
      *
+     * readCode() rather than read(): the inner regex below matches every
+     * quoted string, and an apostrophe in a comment - "the role's own
+     * permission" - desyncs its quote-pairing exactly the way one did in
+     * generate-roles-doc.php before that tool was fixed the same way. Comments
+     * are prose about permissions, not permissions.
+     *
      * @return array<string, string[]> role => permissions
      */
     private function permissionMatrix(): array
     {
-        $src = SourceTree::read('app/Auth.php');
+        $src = SourceTree::readCode('app/Auth.php');
 
         if (!preg_match('/const\s+PERMISSIONS\s*=\s*\[(.*?)\n\];/s', $src, $block)) {
             throw new \RuntimeException('Could not locate PERMISSIONS in app/Auth.php.');

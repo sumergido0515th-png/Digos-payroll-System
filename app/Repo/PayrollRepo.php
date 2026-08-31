@@ -72,6 +72,38 @@ final class PayrollRepo
     }
 
     /**
+     * Totals by office, across every office - never scoped.
+     *
+     * The one deliberate citywide read on this table, gated entirely by the
+     * `aggregate.citywide` permission checked before this is ever called -
+     * the same shape `apiGetLogs` already is, and for the same reason: a
+     * citywide total is what the permission exists to grant, so there is
+     * nothing left for a scope predicate to narrow. Still composed with
+     * FilterSpec/FilterSql the ordinary way, so a caller can narrow the
+     * aggregate to one period the same way they would narrow the list - the
+     * WHERE clause is real, only the scope half of it is deliberately absent.
+     *
+     * @param array<string, mixed> $payload Payroll's own facets, e.g. PeriodID
+     * @return array<int, array<string, mixed>> OfficeCode, PayrollCount, TotalGross, TotalNet
+     */
+    public static function citywideTotals(array $payload = []): array
+    {
+        $spec = FilterSpec::fromPayload('Payroll', $payload);
+        $filter = FilterSql::build($spec);
+
+        return DB::rows(
+            'SELECT OfficeCode,
+                    COUNT(*) AS PayrollCount,
+                    COALESCE(SUM(TotalGross), 0) AS TotalGross,
+                    COALESCE(SUM(TotalNet), 0) AS TotalNet
+               FROM Payroll
+              WHERE ' . $filter['sql'] . '
+              GROUP BY OfficeCode
+              ORDER BY OfficeCode',
+            $filter['params']);
+    }
+
+    /**
      * Payroll headers this user may see.
      *
      * Kept as the name the modules already call. It is search() - the filters
