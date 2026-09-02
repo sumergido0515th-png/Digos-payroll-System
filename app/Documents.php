@@ -27,6 +27,7 @@ use Digos\Repo\ContractRepo;
 use Digos\Repo\EmployeeDocumentRepo;
 use Digos\Repo\EmployeeRepo;
 use Digos\Repo\MemorandumRepo;
+use Digos\Repo\ReferenceRepo;
 use Digos\Repo\ScopeGateway;
 use Digos\Repo\WorkShiftRepo;
 
@@ -40,10 +41,28 @@ const MEMO_AUTHORITY_TYPES = ['Overtime', 'Detail', 'Travel', 'FlexiTime', 'Susp
  * Memorandum
  * ======================================================================== */
 
+/** The choices the memorandum filter bar may offer this user. */
+function apiGetMemorandumFacets(array $p, array $user): array
+{
+    return MemorandumRepo::facetOptionsScoped($user);
+}
+
 /** Memoranda the caller may see. */
 function apiListMemoranda(array $p, array $user): array
 {
-    return MemorandumRepo::listScoped($user, $p);
+    return MemorandumRepo::search($user, $p);
+}
+
+/**
+ * Open-ended memoranda the caller may see, untouched in 6 months.
+ *
+ * The predicate is Digos\Domain\Query\Watchlists::openEndedMemosStale() -
+ * EffectivityType = 'OpenEnded', not a NULL EffectivityEnd, which Specific and
+ * Recurring memos both carry legitimately.
+ */
+function apiGetMemorandumWatchlist(array $p, array $user): array
+{
+    return MemorandumRepo::openEndedStaleScoped($user, date('Y-m-d'));
 }
 
 /** One memorandum with its covered employees. */
@@ -210,10 +229,22 @@ function memoCoveredEmployeeIds(array $p, array $user): array
  * Bio exemption
  * ======================================================================== */
 
+/** The choices the bio-exemption filter bar may offer this user. */
+function apiGetBioExemptionFacets(array $p, array $user): array
+{
+    return EmployeeDocumentRepo::exemptionFacetOptionsScoped($user);
+}
+
 /** Bio exemptions the caller may see. */
 function apiListBioExemptions(array $p, array $user): array
 {
-    return EmployeeDocumentRepo::listExemptionsScoped($user, $p);
+    return EmployeeDocumentRepo::searchExemptions($user, $p);
+}
+
+/** Bio exemptions the caller may see, expiring within the standing 15-day window. */
+function apiGetBioExemptionWatchlist(array $p, array $user): array
+{
+    return EmployeeDocumentRepo::exemptionsExpiringScoped($user, date('Y-m-d'));
 }
 
 /** Creates or updates a bio exemption. */
@@ -270,10 +301,16 @@ function apiDeleteBioExemption(array $p, array $user): array
  * Travel order
  * ======================================================================== */
 
+/** The choices the travel-order filter bar may offer this user. */
+function apiGetTravelOrderFacets(array $p, array $user): array
+{
+    return EmployeeDocumentRepo::travelOrderFacetOptionsScoped($user);
+}
+
 /** Travel orders the caller may see. */
 function apiListTravelOrders(array $p, array $user): array
 {
-    return EmployeeDocumentRepo::listTravelOrdersScoped($user, $p);
+    return EmployeeDocumentRepo::searchTravelOrders($user, $p);
 }
 
 /** Creates or updates a travel order. */
@@ -418,10 +455,33 @@ function restDayList(mixed $raw): string
  * Contracts
  * ======================================================================== */
 
+/** The choices the contract filter bar may offer this user. */
+function apiGetContractFacets(array $p, array $user): array
+{
+    return ContractRepo::facetOptionsScoped($user);
+}
+
 /** Contracts the caller may see. */
 function apiListContracts(array $p, array $user): array
 {
-    return ContractRepo::listScoped($user, $p);
+    return ContractRepo::search($user, $p);
+}
+
+/**
+ * Contracts the caller may see, ending on or before a payroll period's end.
+ *
+ * Takes a PeriodID rather than a raw date - the watchlist question is "will
+ * this contract still cover this period", and the caller names the period,
+ * not a date they would otherwise have to look up first.
+ */
+function apiGetContractWatchlist(array $p, array $user): array
+{
+    requireFields($p, ['PeriodID']);
+
+    $period = ReferenceRepo::period((string) $p['PeriodID']);
+    if (!$period) throw new RuntimeException('Payroll period not found: ' . $p['PeriodID']);
+
+    return ContractRepo::expiringByScoped($user, (string) $period['EndDate']);
 }
 
 /** Every contract for one employee, so a rate change can be explained. */

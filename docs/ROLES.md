@@ -22,6 +22,7 @@ reads nothing, whatever this table says.
 
 | Permission | Admin | HRMO | Payroll In-Charge | Pre-Auditor | Encoder | Office Head | Internal Auditor |
 |---|---|---|---|---|---|---|---|
+| `aggregate.citywide` | yes | - | - | - | - | - | yes |
 | `attachment.edit` | yes | yes | yes | - | yes | - | - |
 | `attachment.view` | yes | yes | yes | yes | yes | yes | yes |
 | `backup.run` | yes | - | - | - | - | - | - |
@@ -79,24 +80,25 @@ appears here by accident rather than by decision.
 ## Endpoints by permission
 
 - (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
+- `aggregate.citywide` — apiGetCitywidePayrollTotals
 - `attachment.edit` — apiDeleteAttachment, apiUploadAttachment
 - `attachment.view` — apiGetAttachment, apiGetCoverageMatrix, apiListAttachments
 - `backup.run` — apiBackupNow, apiListBackups, apiRestoreBackup
 - `calendar.edit` — apiDeleteHoliday, apiSaveHoliday
 - `calendar.view` — apiListHolidayPayRules, apiListHolidays
 - `contract.edit` — apiAmendContract, apiSaveContract
-- `contract.view` — apiGetContractHistory, apiListContracts
-- `dashboard.view` — apiGetDashboard, apiGetLookups
+- `contract.view` — apiGetContractFacets, apiGetContractHistory, apiGetContractWatchlist, apiListContracts
+- `dashboard.view` — apiGetDashboard, apiGetLookups, apiGlobalSearch
 - `data.import` — apiCommitImport, apiGetImportTypes, apiPreviewImport
 - `document.delete` — apiDeleteBioExemption, apiDeleteMemorandum, apiDeleteTravelOrder
 - `document.edit` — apiSaveBioExemption, apiSaveMemorandum, apiSaveTravelOrder
-- `document.view` — apiGetMemorandum, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
+- `document.view` — apiGetBioExemptionFacets, apiGetBioExemptionWatchlist, apiGetMemorandum, apiGetMemorandumFacets, apiGetMemorandumWatchlist, apiGetTravelOrderFacets, apiListBioExemptions, apiListMemoranda, apiListTravelOrders
 - `dtr.edit` — apiDeleteDtrDay, apiSaveDtrDays
 - `dtr.import` — apiImportBiometricLogs
 - `dtr.view` — apiGetDtrGrid, apiGetDtrTotals, apiResolveDay
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
-- `employee.view` — apiGetEmployee, apiListEmployees
+- `employee.view` — apiGetEmployee, apiGetEmployeeFacets, apiListEmployees
 - `log.view` — apiGetLogs
 - `office.edit` — apiDeleteDepartment, apiDeleteFunction, apiDeleteOffice, apiSaveDepartment, apiSaveFunction, apiSaveOffice
 - `office.view` — apiListDepartments, apiListFunctions, apiListOffices
@@ -105,11 +107,11 @@ appears here by accident rather than by decision.
 - `payroll.release` — apiEmailPayslips, apiReleasePayroll
 - `payroll.submit` — apiSubmitPayroll
 - `payroll.suspend` — apiReturnPayroll, apiSettleSuspension, apiSuspendPayroll
-- `payroll.view` — apiComputePayroll, apiGetPayroll, apiListPayrolls, apiListSuspensions, apiRunPreAudit
+- `payroll.view` — apiComputePayroll, apiGetPayroll, apiGetPayrollFacets, apiGetSuspensionFacets, apiGetSuspensionWatchlist, apiListPayrolls, apiListSuspensions, apiRunPreAudit
 - `period.edit` — apiDeletePeriod, apiSavePeriod
 - `period.view` — apiListPeriods
 - `print.run` — apiGetPrintHtml, apiMarkPrinted, apiQueueForPrinting
-- `report.view` — apiRunReport
+- `report.view` — apiGetOperationalMetrics, apiRunReport
 - `scope.manage` — apiDeleteScopeGrant, apiGetScopeDimensions, apiListScopeGrants, apiSaveScopeGrant
 - `settings.edit` — apiApplyBackupSchedule, apiSaveSettings, apiUploadImageSetting
 - `settings.view` — apiGetSettings

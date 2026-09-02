@@ -8,10 +8,16 @@
 
 declare(strict_types=1);
 
+use Digos\Domain\Reports\OperationalMetrics;
 use Digos\Domain\Workflow\PayrollWorkflow;
+use Digos\Repo\ContractRepo;
+use Digos\Repo\EmployeeDocumentRepo;
 use Digos\Repo\EmployeeRepo;
+use Digos\Repo\MemorandumRepo;
 use Digos\Repo\PayrollRepo;
+use Digos\Repo\PrintLogRepo;
 use Digos\Repo\ReferenceRepo;
+use Digos\Repo\SuspensionRepo;
 
 /* ==========================================================================
  * Dashboard
@@ -77,6 +83,94 @@ function apiGetDashboard(array $p, array $user): array
         'monthly' => $monthly,
         'recent' => array_slice($payrolls, 0, 10),
     ];
+}
+
+/* ==========================================================================
+ * Global search (Phase 9E)
+ * ======================================================================== */
+
+/**
+ * The single global search box: an exact match on the term against every
+ * entity's own control-number-shaped facet, tried in a fixed order until one
+ * hits.
+ *
+ * Each candidate runs through that entity's own scoped search() - so a term
+ * matching a record outside the caller's grant returns no more than an
+ * unfiltered list would, for the same reason FilterSpec accepts a filter
+ * naming another office and returns nothing rather than refusing it: a
+ * refusal here would confirm the record exists.
+ *
+ * Deliberately narrow. Suspensions (NsNo) and bio exemptions have no
+ * standalone filterable screen to jump to - a suspension is read from within
+ * the payroll it was raised against, not as a list of its own - so they are
+ * not candidates here; the box searches what a caller can actually be taken
+ * to.
+ */
+function apiGlobalSearch(array $p, array $user): array
+{
+    $term = trim((string) ($p['q'] ?? ''));
+    if ($term === '') {
+        throw new RuntimeException(
+            'Type a payroll, control or employee number to search.');
+    }
+
+    // permission, page, tab (or null), the search itself.
+    $candidates = [
+        ['payroll.view', 'payroll', null,
+            fn() => PayrollRepo::search($user, ['PayrollNo' => $term])],
+        ['document.view', 'documents', 'memo',
+            fn() => MemorandumRepo::search($user, ['ControlNo' => $term])],
+        ['document.view', 'documents', 'travel',
+            fn() => EmployeeDocumentRepo::searchTravelOrders($user, ['TravelOrderNo' => $term])],
+        ['contract.view', 'documents', 'contract',
+            fn() => ContractRepo::search($user, ['ContractID' => $term])],
+        ['employee.view', 'employees', null,
+            fn() => EmployeeRepo::search($user, ['EmployeeNo' => $term])],
+    ];
+
+    foreach ($candidates as [$permission, $page, $tab, $search]) {
+        if (!hasPermission($user, $permission)) continue;
+        if ($search()) return ['found' => true, 'page' => $page, 'tab' => $tab, 'term' => $term];
+    }
+
+    return ['found' => false, 'term' => $term];
+}
+
+/* ==========================================================================
+ * Operational metrics (Phase 10 baseline)
+ * ======================================================================== */
+
+/**
+ * The reprint-rate, pages-printed, suspension-ground and settlement-
+ * turnaround figures docs/PHASE_PLAN.md names as the baseline to collect
+ * from Phase 10's live run - built ahead of that run rather than after it,
+ * so there is something to log against from the first day rather than a
+ * number reconstructed from raw tables once someone remembers it was asked
+ * for.
+ *
+ * Scoped to the caller the same way the rest of Reports.php already is -
+ * PrintLogRepo::officialPrintsScoped() and SuspensionRepo::activityScoped()
+ * both join through Payroll and apply ScopeGateway::where(), so an
+ * office-scoped role's figures cover only their own office's suspensions and
+ * prints. A citywide baseline follows from a citywide ScopeGrants row, the
+ * same as every other scoped read in this system - this endpoint has no
+ * separate citywide code path and does not touch `aggregate.citywide`, which
+ * gates a different, unscoped query (PayrollRepo::citywideTotals()).
+ *
+ * @param array<string, mixed> $p optional {From, To} dates bounding RaisedAt/PrintedAt
+ */
+function apiGetOperationalMetrics(array $p, array $user): array
+{
+    $from = nullableDate($p['From'] ?? null, 'From');
+    $to = nullableDate($p['To'] ?? null, 'To');
+    if ($from !== null && $to !== null && $to < $from) {
+        throw new RuntimeException('"To" cannot be before "From".');
+    }
+
+    return array_merge(
+        OperationalMetrics::printActivity(PrintLogRepo::officialPrintsScoped($user, $from, $to)),
+        OperationalMetrics::suspensionActivity(SuspensionRepo::activityScoped($user, $from, $to)),
+        ['from' => $from, 'to' => $to]);
 }
 
 /* ==========================================================================

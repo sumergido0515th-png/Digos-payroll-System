@@ -215,7 +215,24 @@ function apiComputePayroll(array $p, array $user): array
 /** Lists payrolls with search + filters, newest first. */
 function apiListPayrolls(array $p, array $user): array
 {
-    return array_map('aliasFunctionOut', PayrollRepo::listScoped($user, $p));
+    return array_map('aliasFunctionOut', PayrollRepo::search($user, $p));
+}
+
+/**
+ * The choices the payroll filter bar may offer this user.
+ *
+ * A separate call rather than a field on the list response: the options do not
+ * change as the user narrows their filters - narrowing them by what is already
+ * on screen is what makes a facet impossible to widen again - and the list is
+ * re-fetched on every keystroke of the search box.
+ *
+ * Scoped in the repository, like every other read. See
+ * tests/Integration/FilterScopeTest.php for why a dropdown is a disclosure
+ * surface in its own right.
+ */
+function apiGetPayrollFacets(array $p, array $user): array
+{
+    return PayrollRepo::facetOptionsScoped($user);
 }
 
 /** One payroll with its lines. */
@@ -802,10 +819,33 @@ function apiSettleSuspension(array $p, array $user): array
     return ['NsNo' => $p['NsNo'], 'Status' => $status, 'payrollReopened' => !$stillOpen];
 }
 
+/** The choices the suspension filter bar may offer this user. */
+function apiGetSuspensionFacets(array $p, array $user): array
+{
+    return SuspensionRepo::facetOptionsScoped($user);
+}
+
 /** Suspensions the caller may see, for the worklist and a payroll's own history. */
 function apiListSuspensions(array $p, array $user): array
 {
-    return SuspensionRepo::listScoped($user, $p);
+    return SuspensionRepo::search($user, $p);
+}
+
+/** Suspensions the caller may see, still Open past their deadline. */
+function apiGetSuspensionWatchlist(array $p, array $user): array
+{
+    return SuspensionRepo::pastDeadlineScoped($user, date('Y-m-d'));
+}
+
+/**
+ * Payroll totals by office, citywide - never scoped to the caller's own
+ * office. Gated on `aggregate.citywide` in the route table rather than
+ * `payroll.view`, since seeing every office's total is exactly what that
+ * separate permission exists to decide.
+ */
+function apiGetCitywidePayrollTotals(array $p, array $user): array
+{
+    return PayrollRepo::citywideTotals($p);
 }
 
 /** PRE_AUDIT_APPROVED -> FOR_PRINTING. Phase 8 attaches certification to the next step. */
