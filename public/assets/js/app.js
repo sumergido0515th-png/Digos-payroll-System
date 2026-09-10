@@ -124,6 +124,19 @@ function badge(status) {
   return '<span class="badge-status st-' + esc(status) + '">' + esc(status) + '</span>';
 }
 
+/**
+ * Small icon action button, used by every list screen's row actions.
+ *
+ * Lived inside Pages.employees's own IIFE until the views/employees.php
+ * split - every other page module called it as a bare global, which only
+ * worked because index.php happened to include employees.php before them.
+ * Belongs in the shared core, not one page's closure.
+ */
+function actionBtn(icon, onclick, cls) {
+  return '<button class="btn btn-sm btn-link p-1 ' + (cls || '') + '" onclick="' + onclick + '">' +
+    '<span class="material-icons" style="font-size:17px">' + icon + '</span></button>';
+}
+
 /** Debounce helper for live-search boxes. */
 function debounce(fn, ms) {
   var t;

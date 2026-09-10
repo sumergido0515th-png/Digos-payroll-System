@@ -114,7 +114,10 @@ if (empty($_SESSION['email'])) {
       <?php
         include dirname(__DIR__) . '/views/dashboard.php';
         include dirname(__DIR__) . '/views/employees.php';
+        include dirname(__DIR__) . '/views/timekeepers.php';
+        include dirname(__DIR__) . '/views/departments.php';
         include dirname(__DIR__) . '/views/payroll.php';
+        include dirname(__DIR__) . '/views/periods.php';
         include dirname(__DIR__) . '/views/preaudit.php';
         include dirname(__DIR__) . '/views/documents.php';
         include dirname(__DIR__) . '/views/dtr.php';
