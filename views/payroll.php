@@ -166,27 +166,27 @@ Pages.payroll = (function () {
 
     api('apiListPayrolls', filters).then(function (rows) {
       document.getElementById('pr-rows').innerHTML = rows.map(function (r) {
-        var acts = actionBtn('visibility', 'Pages.payroll.view(\'' + r.PayrollNo + '\')');
+        var acts = actionBtn('visibility', 'Pages.payroll.view', [r.PayrollNo]);
         if (can('payroll.edit') && ['DRAFT', 'FOR_PRE_AUDIT', 'RETURNED_TO_PREPARER'].indexOf(r.Status) >= 0)
-          acts += actionBtn('edit', 'Pages.payroll.open(\'' + r.PayrollNo + '\')');
+          acts += actionBtn('edit', 'Pages.payroll.open', [r.PayrollNo]);
         if (can('payroll.submit') && (r.Status === 'DRAFT' || r.Status === 'RETURNED_TO_PREPARER'))
-          acts += actionBtn('send', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'submit\')');
+          acts += actionBtn('send', 'Pages.payroll.move', [r.PayrollNo, 'submit']);
         // Approve and Suspend need the findings panel to decide against, so
         // they live on the pre-auditor Worklist screen rather than here - a
         // reviewer approving from a bare list, with no findings in view,
         // is the UI shortcut this split is meant to prevent.
         if (can('print.run') && r.Status === 'PRE_AUDIT_APPROVED')
-          acts += actionBtn('print', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'queue\')', 'text-primary');
+          acts += actionBtn('print', 'Pages.payroll.move', [r.PayrollNo, 'queue'], 'text-primary');
         if (can('print.run') && r.Status === 'FOR_PRINTING')
-          acts += actionBtn('done_all', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'printed\')', 'text-primary');
+          acts += actionBtn('done_all', 'Pages.payroll.move', [r.PayrollNo, 'printed'], 'text-primary');
         if (can('payroll.release') && r.Status === 'PRINTED')
-          acts += actionBtn('paid', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'release\')', 'text-success');
+          acts += actionBtn('paid', 'Pages.payroll.move', [r.PayrollNo, 'release'], 'text-success');
         if (can('payroll.edit')
             && ['DRAFT', 'FOR_PRE_AUDIT', 'PRE_AUDIT_APPROVED', 'FOR_PRINTING', 'PRINTED',
                 'RETURNED_TO_PREPARER'].indexOf(r.Status) >= 0)
-          acts += actionBtn('cancel', 'Pages.payroll.move(\'' + r.PayrollNo + '\',\'cancel\')', 'text-danger');
+          acts += actionBtn('cancel', 'Pages.payroll.move', [r.PayrollNo, 'cancel'], 'text-danger');
         if (can('payroll.edit') && r.Status === 'DRAFT')
-          acts += actionBtn('delete', 'Pages.payroll.remove(\'' + r.PayrollNo + '\')', 'text-danger');
+          acts += actionBtn('delete', 'Pages.payroll.remove', [r.PayrollNo], 'text-danger');
 
         return '<tr><td class="fw-semibold">' + esc(r.PayrollNo) + '</td>' +
           '<td>' + esc(r.PeriodID) + '</td><td>' + esc(r.OfficeCode) + '</td>' +
@@ -228,7 +228,8 @@ Pages.payroll = (function () {
       numCell('Tax', d.Tax) + numCell('CashAdvance', d.CashAdvance) + numCell('OtherDeductions', d.OtherDeductions) +
       '<td class="text-money g-net fw-bold">' + (d.NetPay !== undefined ? fmtMoney(d.NetPay) : '0.00') + '</td>' +
       '<td><input class="form-control form-control-sm" data-f="Remarks" value="' + esc(d.Remarks || '') + '" style="text-align:left"></td>' +
-      '<td>' + actionBtn('close', '', 'text-danger g-del') + '</td>';
+      // No handler: the row's delete is bound by .g-del below, not by onclick.
+      '<td>' + actionBtn('close', '', [], 'text-danger g-del') + '</td>';
 
     tr.querySelector('.g-emp').onchange = function () {
       var id = this.value;

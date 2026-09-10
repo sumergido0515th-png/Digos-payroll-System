@@ -125,15 +125,54 @@ function badge(status) {
 }
 
 /**
+ * A function call, encoded to be safe as the body of an on* attribute.
+ *
+ * The only supported way to build one. Row actions used to concatenate the
+ * call by hand at thirty-odd sites - `'Pages.x.edit(\'' + id + '\')'` - which
+ * made escaping every caller's job, and most did not do it. A PayrollNo
+ * carrying a double quote (reachable, because the PayrollPrefix setting is
+ * embedded verbatim in every payroll number and was not validated) closed the
+ * onclick attribute early and let the rest of the number be parsed as new
+ * attributes on the button.
+ *
+ * This encodes rather than escapes, because esc() alone would not have been
+ * enough. An event-handler attribute is HTML-decoded *before* its contents
+ * are parsed as JavaScript, so esc()'s &#39; decodes back to a bare
+ * apostrophe and still ends the JS string it was sitting in - the sites that
+ * did call esc() were protected from attribute breakout and not from that.
+ * So each argument goes through JSON.stringify first, producing a correctly
+ * escaped double-quoted JavaScript string, and esc() second, keeping that
+ * string from ending the HTML attribute around it. The two undo in the right
+ * order: the browser decodes the entities, and what is left is exactly the
+ * JSON literal.
+ *
+ * An empty fn yields an empty attribute body, for buttons wired up by a
+ * listener rather than by onclick.
+ */
+function jsCall(fn, args) {
+  if (!fn) return '';
+  return esc(fn + '(' + (args || []).map(function (a) {
+    if (a === null || a === undefined) return '""';
+    // Objects go through as object literals (goToPage's params argument);
+    // everything else is coerced to a string, because every id this builds a
+    // call from is one.
+    return JSON.stringify(typeof a === 'object' ? a : String(a));
+  }).join(',') + ')');
+}
+
+/**
  * Small icon action button, used by every list screen's row actions.
  *
  * Lived inside Pages.employees's own IIFE until the views/employees.php
  * split - every other page module called it as a bare global, which only
  * worked because index.php happened to include employees.php before them.
  * Belongs in the shared core, not one page's closure.
+ *
+ * Takes the handler as a function name plus its arguments rather than a
+ * ready-made string, so the encoding in jsCall() cannot be skipped.
  */
-function actionBtn(icon, onclick, cls) {
-  return '<button class="btn btn-sm btn-link p-1 ' + (cls || '') + '" onclick="' + onclick + '">' +
+function actionBtn(icon, fn, args, cls) {
+  return '<button class="btn btn-sm btn-link p-1 ' + (cls || '') + '" onclick="' + jsCall(fn, args) + '">' +
     '<span class="material-icons" style="font-size:17px">' + icon + '</span></button>';
 }
 

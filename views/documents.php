@@ -198,9 +198,9 @@ Pages.documents = (function () {
         }).join('') +
         '<td class="text-end text-nowrap">' +
           (can(cfg.perm) ? actionBtn('edit',
-            'Pages.documents.edit(\'' + id + '\')') : '') +
+            'Pages.documents.edit', [id]) : '') +
           (cfg.remove && can(cfg.delPerm) ? actionBtn('delete',
-            'Pages.documents.remove(\'' + id + '\')', 'text-danger') : '') +
+            'Pages.documents.remove', [id], 'text-danger') : '') +
         '</td></tr>';
       }).join('') || '<tr><td colspan="' + (cfg.head.length + 1) +
         '" class="text-center text-muted py-4">No ' + esc(cfg.title.toLowerCase()) +

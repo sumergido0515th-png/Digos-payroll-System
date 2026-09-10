@@ -220,8 +220,9 @@ Pages.dashboard = (function () {
         html += '<div class="text-muted small mb-1">+' + (rows.length - shown.length) + ' more</div>';
       }
       if (w.key !== 'suspension' || can('payroll.approve')) {
-        html += '<a href="#" class="small" onclick="event.preventDefault();goToPage(\'' + w.page + '\'' +
-          (w.tab ? ',{tab:\'' + w.tab + '\'}' : '') + ')">View all &raquo;</a>';
+        html += '<a href="#" class="small" onclick="event.preventDefault();' +
+          jsCall('goToPage', w.tab ? [w.page, { tab: w.tab }] : [w.page]) +
+          '">View all &raquo;</a>';
       }
       body.innerHTML = html;
     }).catch(function () { body.innerHTML = '<div class="text-muted small">Unavailable.</div>'; });

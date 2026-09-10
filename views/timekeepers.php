@@ -35,8 +35,8 @@ Pages.timekeepers = (function () {
             '<td>' + badge(t.Status) + '</td>' +
             '<td class="text-end text-nowrap">' +
             (can('timekeeper.edit') ?
-              actionBtn('edit', 'Pages.timekeepers.edit(\'' + t.TimekeeperID + '\')') +
-              actionBtn('delete', 'Pages.timekeepers.remove(\'' + t.TimekeeperID + '\')', 'text-danger') : '') +
+              actionBtn('edit', 'Pages.timekeepers.edit', [t.TimekeeperID]) +
+              actionBtn('delete', 'Pages.timekeepers.remove', [t.TimekeeperID], 'text-danger') : '') +
             '</td></tr>';
         }).join('') || '<tr><td colspan="8" class="text-center text-muted py-4">No timekeepers.</td></tr>';
       });

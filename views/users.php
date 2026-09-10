@@ -57,8 +57,8 @@ Pages.users = (function () {
           '<td>' + (u.LastLogin ? fmtDate(u.LastLogin) : '<span class="text-muted">never</span>') + '</td>' +
           '<td>' + badge(u.Status) + '</td>' +
           '<td class="text-end text-nowrap">' +
-          actionBtn('edit', 'Pages.users.edit(\'' + esc(u.Email) + '\')') +
-          actionBtn('delete', 'Pages.users.remove(\'' + esc(u.Email) + '\')', 'text-danger') +
+          actionBtn('edit', 'Pages.users.edit', [u.Email]) +
+          actionBtn('delete', 'Pages.users.remove', [u.Email], 'text-danger') +
           '</td></tr>';
       }).join('');
     });
@@ -152,8 +152,8 @@ Pages.scopeGrants = (function () {
           '<td>' + validity(g) + '</td>' +
           '<td class="text-muted small">' + esc(g.GrantedBy || 'seeded by migration') + '</td>' +
           '<td class="text-end text-nowrap">' +
-          actionBtn('edit', 'Pages.scopeGrants.edit(\'' + esc(g.GrantID) + '\')') +
-          actionBtn('delete', 'Pages.scopeGrants.remove(\'' + esc(g.GrantID) + '\')', 'text-danger') +
+          actionBtn('edit', 'Pages.scopeGrants.edit', [g.GrantID]) +
+          actionBtn('delete', 'Pages.scopeGrants.remove', [g.GrantID], 'text-danger') +
           '</td></tr>';
       }).join('') :
         '<tr><td colspan="6" class="text-center text-muted py-3">' +

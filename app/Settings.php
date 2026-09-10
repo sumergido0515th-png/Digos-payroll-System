@@ -91,11 +91,48 @@ function apiGetSettings(array $p, array $user): array
     return settingsMap(true);
 }
 
+/**
+ * Settings whose value is constrained, as key => [pattern, refusal].
+ *
+ * Most settings are free text that is only ever displayed, and validating
+ * those would be inventing rules nobody asked for. PayrollPrefix is not one
+ * of them: nextPayrollNo() embeds it verbatim in every payroll number, which
+ * is a primary key, an archive reference somebody reads aloud, and a string
+ * printed on a voucher. A quote in it used to end the onclick attribute of
+ * every row action built from that number and let the rest be parsed as
+ * attributes on the button - actionBtn() now encodes its arguments so that
+ * particular door is shut, but a control number containing punctuation is a
+ * bad control number regardless of what renders it.
+ *
+ * The 12-character ceiling leaves room in Payroll.PayrollNo (varchar(30)) for
+ * the "-YYYY-NNNNNN" that nextPayrollNo() appends. Without it the insert
+ * fails on the column width instead, which under STRICT_ALL_TABLES is an
+ * error rather than a silent truncation - correct, but it reaches the user as
+ * a driver message about a column they have never heard of.
+ */
+const SETTING_PATTERNS = [
+    'PayrollPrefix' => [
+        '/^[A-Za-z0-9][A-Za-z0-9\-]{0,11}$/',
+        'Payroll Number Prefix must start with a letter or digit and use only letters, '
+        . 'digits and hyphens, up to 12 characters.',
+    ],
+];
+
 /** Saves a batch of settings. Payload: {settings: {Key: Value}} */
 function apiSaveSettings(array $p, array $user): array
 {
     $entries = $p['settings'] ?? [];
     if (!$entries) throw new RuntimeException('Nothing to save.');
+
+    // Checked in full before anything is written: a batch that fails halfway
+    // leaves the screen showing values the database does not hold.
+    foreach ($entries as $k => $v) {
+        [$pattern, $refusal] = SETTING_PATTERNS[(string) $k] ?? [null, null];
+        if ($pattern !== null && !preg_match($pattern, (string) $v)) {
+            throw new RuntimeException($refusal);
+        }
+    }
+
     foreach ($entries as $k => $v) setSetting((string) $k, $v);
     return ['saved' => count($entries)];
 }

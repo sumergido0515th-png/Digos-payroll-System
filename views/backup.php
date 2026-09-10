@@ -46,7 +46,7 @@ Pages.backup = (function () {
           '<td class="text-end text-nowrap">' +
           '<a class="btn btn-sm btn-link p-1" target="_blank" href="' + esc(b.Url) +
           '" title="Open / download"><span class="material-icons" style="font-size:17px">open_in_new</span></a>' +
-          actionBtn('settings_backup_restore', 'Pages.backup.restore(\'' + esc(b.FileID) + '\')', 'text-danger') +
+          actionBtn('settings_backup_restore', 'Pages.backup.restore', [b.FileID], 'text-danger') +
           '</td></tr>';
       }).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">No backups yet.</td></tr>';
     });

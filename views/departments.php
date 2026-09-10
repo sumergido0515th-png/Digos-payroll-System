@@ -71,8 +71,8 @@ Pages.departments = (function () {
           '<td>' + badge(r.Status) + '</td>' +
           '<td class="text-end text-nowrap">' +
           (can('office.edit') ?
-            actionBtn('edit', 'Pages.departments.edit(\'' + esc(r[c.key]) + '\')') +
-            actionBtn('delete', 'Pages.departments.remove(\'' + esc(r[c.key]) + '\')', 'text-danger') : '') +
+            actionBtn('edit', 'Pages.departments.edit', [r[c.key]]) +
+            actionBtn('delete', 'Pages.departments.remove', [r[c.key]], 'text-danger') : '') +
           '</td></tr>';
       }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No records.</td></tr>';
     });
