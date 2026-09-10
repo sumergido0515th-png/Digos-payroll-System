@@ -81,6 +81,7 @@ final class ApplicationLayer
             'app/Repo/SuspensionRepo.php',
             'app/Repo/PrintLogRepo.php',
             'app/Repo/ImportRepo.php',
+            'app/Repo/ErrorLogRepo.php',
             'app/Settings.php',
             'app/Auth.php',
             'app/Access.php',
@@ -105,6 +106,7 @@ final class ApplicationLayer
             // effect of an unrelated test's load order, and failed the moment
             // the file was run on its own.
             'app/PrintDoc.php',
+            'app/ErrorLog.php',
         ] as $file) {
             require_once PROJECT_ROOT . '/' . $file;
         }

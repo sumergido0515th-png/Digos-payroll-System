@@ -83,6 +83,31 @@
       <tbody id="log-rows"></tbody>
     </table>
   </div></div>
+
+  <!-- Application Error Log: the other kind of log (app/ErrorLog.php) -
+       errors nobody anticipated, not business events. -->
+  <div class="card mt-4">
+    <div class="card-body py-2 d-flex gap-2 align-items-center">
+      <span class="fw-semibold">Application Error Log</span>
+      <span class="text-muted small">PHP and browser errors, not audit events.</span>
+      <input class="form-control form-control-sm w-auto ms-auto" id="errlog-search"
+        placeholder="Search message, file, url, user...">
+      <select class="form-select form-select-sm w-auto" id="errlog-source">
+        <option value="">All sources</option>
+        <option value="php">PHP</option>
+        <option value="js">Browser</option>
+      </select>
+      <button class="btn btn-sm btn-outline-secondary" id="errlog-refresh">
+        <span class="material-icons">refresh</span></button>
+    </div>
+  </div>
+  <div class="card mt-3"><div class="table-responsive" style="max-height:50vh">
+    <table class="table table-sm table-hover">
+      <thead class="sticky-top"><tr><th>Timestamp</th><th>Source</th><th>Message</th>
+        <th>File:Line</th><th>User</th></tr></thead>
+      <tbody id="errlog-rows"></tbody>
+    </table>
+  </div></div>
 </section>
 
 <!-- ==================== BACKUP & RESTORE ==================== -->
@@ -565,6 +590,24 @@ Pages.logs = (function () {
       }).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">No log entries.</td></tr>';
     });
   }
+  function loadErrors() {
+    busy(api('apiGetErrorLog', {
+      search: document.getElementById('errlog-search').value,
+      source: document.getElementById('errlog-source').value
+    })).then(function (rows) {
+      document.getElementById('errlog-rows').innerHTML = rows.map(function (r) {
+        return '<tr><td class="text-nowrap">' +
+          esc(String(r.CreatedAt).replace('T', ' ').slice(0, 19)) + '</td>' +
+          '<td><span class="badge ' + (r.Source === 'js' ? 'text-bg-warning' : 'text-bg-secondary') +
+          '">' + esc(r.Source) + '</span></td>' +
+          '<td class="small" style="max-width:420px;overflow:hidden;text-overflow:ellipsis">' +
+          esc(r.Message) + '</td>' +
+          '<td class="small text-muted text-nowrap">' + esc(r.File) +
+          (r.Line ? ':' + esc(r.Line) : '') + '</td>' +
+          '<td class="small">' + esc(r.UserEmail) + '</td></tr>';
+      }).join('') || '<tr><td colspan="5" class="text-center text-muted py-4">No errors logged.</td></tr>';
+    });
+  }
   return {
     init: function () {
       document.getElementById('log-search').oninput = debounce(load);
@@ -572,6 +615,11 @@ Pages.logs = (function () {
       document.getElementById('log-to').onchange = load;
       document.getElementById('log-refresh').onclick = load;
       load();
+
+      document.getElementById('errlog-search').oninput = debounce(loadErrors);
+      document.getElementById('errlog-source').onchange = loadErrors;
+      document.getElementById('errlog-refresh').onclick = loadErrors;
+      loadErrors();
     }
   };
 })();

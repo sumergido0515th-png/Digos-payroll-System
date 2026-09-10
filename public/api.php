@@ -151,6 +151,12 @@ const ROUTES = [
     'apiGetRoles' => ['user.manage', 'Users', ''],
     'apiGetLogs' => ['log.view', 'Logs', ''],
 
+    // Application error log (out of phase, see app/ErrorLog.php). Read side
+    // shares log.view with the audit log; the write side is any signed-in
+    // user reporting a browser-side error, not a permission-gated action.
+    'apiGetErrorLog' => ['log.view', 'ErrorLog', ''],
+    'apiLogClientError' => ['', 'ErrorLog', ''],
+
     // Scope grants. Every mutation is audited: this is the table that decides
     // who can see which office's payroll, so a change to it is exactly the kind
     // of thing an auditor asks about later.
@@ -204,6 +210,21 @@ try {
     echo json_encode(ok($data));
 
 } catch (Throwable $e) {
-    error_log('API error: ' . $e->getMessage());
-    echo json_encode(fail($e->getMessage()));
+    if ($e instanceof RuntimeException) {
+        // The documented contract (CLAUDE.md > Conventions > Errors): thrown
+        // on purpose, with a message written for a timekeeper. Safe to
+        // return verbatim, exactly as before.
+        error_log('API error: ' . $e->getMessage());
+        echo json_encode(fail($e->getMessage()));
+    } else {
+        // Everything else - TypeError, PDOException, Error - was never
+        // written to be read by the person who triggered it, and its
+        // message can say things a RuntimeException's never would: a file
+        // path, a query fragment, a class name. Log it in full and hand
+        // back a reference instead of $e->getMessage().
+        $ref = logUnexpectedError($e);
+        error_log('API error [unexpected, ref ' . $ref . ']: ' . $e->getMessage());
+        echo json_encode(fail(
+            'An unexpected error occurred. Reference: ' . $ref . '. Please contact support.'));
+    }
 }

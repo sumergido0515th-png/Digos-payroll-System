@@ -52,6 +52,51 @@ function busy(promise) {
   return promise.finally(function () { el.classList.remove('show'); });
 }
 
+/* ---- client-side error reporting -----------------------------------------
+   The server-side counterpart is app/ErrorLog.php - a RuntimeException from
+   api() already reaches the user as a toast with a written-for-a-timekeeper
+   message, so it is not reported here. This is for the other kind: a screen
+   throwing mid-render, a typo in a page module, a rejected promise nobody
+   attached a .catch to - errors that would otherwise only ever show up as
+   "the page did nothing" with no record anywhere.
+   ------------------------------------------------------------------------- */
+
+var _errorReportCount = 0;
+var _errorReportSeen = {};
+
+/**
+ * Reports one client-side error to apiLogClientError, capped per page load
+ * (20) and deduped by message+file+line so one error thrown on every
+ * mousemove does not flood the table.
+ */
+function reportClientError(message, file, line, stack) {
+  if (_errorReportCount >= 20) return;
+  var key = message + '|' + file + '|' + line;
+  if (_errorReportSeen[key]) return;
+  _errorReportSeen[key] = true;
+  _errorReportCount++;
+  // silent: true - a failed error report (e.g. session already expired)
+  // must not itself pop a toast on top of whatever the user was seeing.
+  api('apiLogClientError', {
+    message: String(message || '').slice(0, 2000),
+    file: String(file || ''),
+    line: line || 0,
+    stack: String(stack || '').slice(0, 4000),
+    url: location.href,
+    userAgent: navigator.userAgent
+  }, true).catch(function () { /* nothing left to do if the report itself fails */ });
+}
+
+window.addEventListener('error', function (e) {
+  reportClientError(e.message, e.filename, e.lineno, e.error && e.error.stack);
+});
+
+window.addEventListener('unhandledrejection', function (e) {
+  var reason = e.reason;
+  var message = 'Unhandled promise rejection: ' + (reason && reason.message ? reason.message : String(reason));
+  reportClientError(message, '', 0, reason && reason.stack);
+});
+
 /* ---- formatting helpers ------------------------------------------------- */
 
 /** Escapes text for HTML interpolation. */

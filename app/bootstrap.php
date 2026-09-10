@@ -54,6 +54,7 @@ require_once __DIR__ . '/Repo/AttachmentRepo.php';
 require_once __DIR__ . '/Repo/SuspensionRepo.php';
 require_once __DIR__ . '/Repo/PrintLogRepo.php';
 require_once __DIR__ . '/Repo/ImportRepo.php';
+require_once __DIR__ . '/Repo/ErrorLogRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';
@@ -68,3 +69,10 @@ require_once __DIR__ . '/Attachments.php';
 require_once __DIR__ . '/PreAudit.php';
 require_once __DIR__ . '/Reports.php';
 require_once __DIR__ . '/PrintDoc.php';
+require_once __DIR__ . '/ErrorLog.php';
+
+// Last, once ErrorLogRepo is loaded: everything from here on that throws
+// uncaught, or fatals outright, has somewhere to go other than a server log
+// file nobody is watching. See ErrorLog.php's own docblock for what this
+// does and does not cover.
+installErrorHandlers();

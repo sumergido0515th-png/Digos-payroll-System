@@ -54,7 +54,12 @@ const BACKUP_TABLES = ['Users', 'EmploymentTypes', 'Offices', 'Departments', 'Fu
     // Last, because restore DELETEs and re-INSERTs in this order and every one
     // of ScopeGrants' foreign keys - Users, Offices, Functions,
     // EmploymentTypes - has to be back in place before its rows can land.
-    'ScopeGrants'];
+    'ScopeGrants',
+    // Out of phase (app/ErrorLog.php). No foreign keys either direction, so
+    // position does not matter - grouped with Logs in spirit, not order,
+    // since it is the same shape: an append-only operational record, not
+    // something anything else in this list points at or is pointed at from.
+    'ErrorLog'];
 
 /** Returns the whole Settings table as a map, cached per request. */
 function settingsMap(bool $refresh = false): array

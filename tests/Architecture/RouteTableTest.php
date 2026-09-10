@@ -34,6 +34,7 @@ final class RouteTableTest extends TestCase
         'apiGetSession',    // SPA boot: identity + settings for the current user
         'apiHeartbeat',     // idle-timer refresh, returns no data
         'apiLogout',        // ending your own session needs no permission
+        'apiLogClientError', // any signed-in role can report a broken screen
     ];
 
     /**

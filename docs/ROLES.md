@@ -79,7 +79,7 @@ appears here by accident rather than by decision.
 
 ## Endpoints by permission
 
-- (any signed-in user) — apiGetSession, apiHeartbeat, apiLogout
+- (any signed-in user) — apiGetSession, apiHeartbeat, apiLogClientError, apiLogout
 - `aggregate.citywide` — apiGetCitywidePayrollTotals
 - `attachment.edit` — apiDeleteAttachment, apiUploadAttachment
 - `attachment.view` — apiGetAttachment, apiGetCoverageMatrix, apiListAttachments
@@ -99,7 +99,7 @@ appears here by accident rather than by decision.
 - `employee.delete` — apiDeleteEmployee
 - `employee.edit` — apiSaveEmployee
 - `employee.view` — apiGetEmployee, apiGetEmployeeFacets, apiListEmployees
-- `log.view` — apiGetLogs
+- `log.view` — apiGetErrorLog, apiGetLogs
 - `office.edit` — apiDeleteDepartment, apiDeleteFunction, apiDeleteOffice, apiSaveDepartment, apiSaveFunction, apiSaveOffice
 - `office.view` — apiListDepartments, apiListFunctions, apiListOffices
 - `payroll.approve` — apiApprovePayroll, apiGetWorklist
