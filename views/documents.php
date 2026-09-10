@@ -35,6 +35,18 @@
           </button>
         </div>
       </div>
+      <!-- Hidden on the Work Shifts tab along with the export button, and for
+           the same reason: shifts are unscoped reference data, not a
+           FilterSpec entity, so there is no sort allowlist to offer. -->
+      <div class="row g-2 align-items-end mt-1" id="doc-sort-row">
+        <div class="col-md-3"><label class="form-label">Sort by</label>
+          <select class="form-select form-select-sm" id="doc-sort"></select></div>
+        <div class="col-md-3">
+          <button class="btn btn-sm btn-outline-secondary w-100" id="doc-direction" type="button"
+                  title="Reverse sort direction">
+            <span class="material-icons" id="doc-direction-icon" style="font-size:16px;vertical-align:-3px">arrow_downward</span>
+            <span id="doc-direction-label">Newest first</span></button></div>
+      </div>
     </div>
   </div>
 
@@ -53,6 +65,9 @@ Pages.documents = (function () {
   /** Which tab is showing. */
   var tab = 'memo';
 
+  /** Current sort direction - shared across tabs, unlike the sort key. */
+  var direction = 'DESC';
+
   /** Employees the caller may see, loaded once per page visit for the pickers. */
   var employees = [];
 
@@ -69,6 +84,9 @@ Pages.documents = (function () {
       title: 'Memorandum', list: 'apiListMemoranda', save: 'apiSaveMemorandum',
       remove: 'apiDeleteMemorandum', key: 'MemoID', entity: 'Memorandum',
       perm: 'document.edit', delPerm: 'document.delete',
+      sorts: [['issued', 'Date issued'], ['received', 'Date received'],
+        ['effectivity', 'Effectivity start'], ['controlNo', 'Control no.'],
+        ['office', 'Office'], ['status', 'Status']],
       head: ['Control No.', 'Subject', 'Authority', 'Office', 'Effectivity', 'Covers', 'Status'],
       cells: function (r) {
         return [r.ControlNo, r.Subject, r.AuthorityType, r.OfficeCode || 'Citywide',
@@ -79,6 +97,8 @@ Pages.documents = (function () {
       title: 'Bio Exemption', list: 'apiListBioExemptions', save: 'apiSaveBioExemption',
       remove: 'apiDeleteBioExemption', key: 'ExemptionID', entity: 'BioExemptions',
       perm: 'document.edit', delPerm: 'document.delete',
+      sorts: [['validFrom', 'Valid from'], ['validTo', 'Valid to'],
+        ['reason', 'Reason'], ['status', 'Status']],
       head: ['Employee', 'Office', 'Reason', 'Valid From', 'Valid To', 'Proof', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.ReasonCode || r.Reason,
@@ -89,6 +109,8 @@ Pages.documents = (function () {
       title: 'Travel Order', list: 'apiListTravelOrders', save: 'apiSaveTravelOrder',
       remove: 'apiDeleteTravelOrder', key: 'TravelOrderID', entity: 'TravelOrders',
       perm: 'document.edit', delPerm: 'document.delete',
+      sorts: [['depart', 'Depart date'], ['return', 'Return date'],
+        ['travelOrderNo', 'T.O. no.'], ['status', 'Status']],
       head: ['T.O. No.', 'Employee', 'Destination', 'Depart', 'Return', 'Per Diem', 'Status'],
       cells: function (r) {
         return [r.TravelOrderNo, r.EmployeeName, r.Destination,
@@ -108,6 +130,7 @@ Pages.documents = (function () {
     contract: {
       title: 'Contract', list: 'apiListContracts', save: 'apiSaveContract',
       key: 'ContractID', entity: 'Contracts', perm: 'contract.edit',
+      sorts: [['start', 'Start date'], ['end', 'End date'], ['status', 'Status']],
       head: ['Employee', 'Office', 'Type', 'Basis', 'Rate', 'Start', 'End', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.TypeCode || '-', r.RateBasis,
@@ -144,6 +167,13 @@ Pages.documents = (function () {
       search: document.getElementById('doc-search').value,
       Status: document.getElementById('doc-status').value
     };
+
+    // Only for a FilterSpec entity: the Work Shifts tab's apiListWorkShifts
+    // does not go through the query core and has no sort allowlist to name.
+    if (cfg.sorts) {
+      filters.sort = document.getElementById('doc-sort').value;
+      filters.direction = direction;
+    }
 
     // The tab is part of the shareable state too, not just the filters - a
     // link to the Bio Exemptions tab should reopen there, not on Memoranda.
@@ -325,6 +355,41 @@ Pages.documents = (function () {
       a.classList.toggle('active', a.dataset.doc === name);
     });
     document.getElementById('doc-new').style.display = can(TABS[tab].perm) ? '' : 'none';
+    populateSorts();
+  }
+
+  /**
+   * Rebuilds the sort dropdown for the active tab.
+   *
+   * Each entity has its own sort allowlist, so this has to be rebuilt per tab
+   * rather than filled once: FilterSpec *refuses* a key it does not know
+   * ("There is no 'controlNo' column to sort by") rather than ignoring it the
+   * way it ignores an unknown filter, because sorting is the one place the
+   * payload becomes an identifier. Rebuilding resets the selection to the
+   * entity's own default, which is what keeps a tab switch from carrying the
+   * previous tab's key into a query that would refuse it.
+   */
+  function populateSorts() {
+    var cfg = TABS[tab];
+    document.getElementById('doc-sort-row').style.display = cfg.sorts ? '' : 'none';
+    if (!cfg.sorts) return;
+
+    document.getElementById('doc-sort').innerHTML = cfg.sorts.map(function (s) {
+      return '<option value="' + esc(s[0]) + '">' + esc(s[1]) + '</option>';
+    }).join('');
+  }
+
+  /** True if the active tab offers this sort key - see populateSorts(). */
+  function tabHasSort(key) {
+    var cfg = TABS[tab];
+    return !!cfg.sorts && cfg.sorts.some(function (s) { return s[0] === key; });
+  }
+
+  function updateDirectionButton() {
+    document.getElementById('doc-direction-icon').textContent =
+      direction === 'ASC' ? 'arrow_upward' : 'arrow_downward';
+    document.getElementById('doc-direction-label').textContent =
+      direction === 'ASC' ? 'Oldest first' : 'Newest first';
   }
 
   return {
@@ -344,8 +409,27 @@ Pages.documents = (function () {
       document.getElementById('doc-search').value = params.search || '';
       document.getElementById('doc-status').value = params.Status || '';
 
+      // A shared link can carry a sort key belonging to a different tab
+      // (#documents?tab=bioex&sort=controlNo). Assigning an absent option
+      // leaves the select blank rather than throwing, and a blank is sent as
+      // sort='' which FilterSpec::scalar() maps to null and defaults - so what
+      // this prevents is not a refused query but a dropdown reading blank
+      // while the list is sorted by something the user cannot see named.
+      // The refusal case is handled by populateSorts() resetting on tab switch.
+      if (params.sort && tabHasSort(params.sort)) {
+        document.getElementById('doc-sort').value = params.sort;
+      }
+      direction = params.direction === 'ASC' ? 'ASC' : 'DESC';
+      updateDirectionButton();
+
       document.getElementById('doc-search').oninput = debounce(load);
       document.getElementById('doc-status').onchange = load;
+      document.getElementById('doc-sort').onchange = load;
+      document.getElementById('doc-direction').onclick = function () {
+        direction = direction === 'ASC' ? 'DESC' : 'ASC';
+        updateDirectionButton();
+        load();
+      };
       document.getElementById('doc-new').onclick = function () { openForm(null); };
 
       // The employee pickers must offer only what the caller may see, so they
