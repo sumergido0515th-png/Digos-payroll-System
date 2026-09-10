@@ -16,6 +16,22 @@ payrolls; it never says *which*. That is `ScopeGrants`, applied by
 and another cover one without inventing a role per office. A user with no grant
 reads nothing, whatever this table says.
 
+**Three reads are citywide by decision, and only three.** `log.view` reaches
+every office's rows in both the audit log (`apiGetLogs`) and the application
+error log (`apiGetErrorLog`); `aggregate.citywide` reaches every office's
+payroll totals (`PayrollRepo::citywideTotals()`). No scope grant narrows any of
+the three. That is intended - both permissions are held only by Internal Auditor
+and Admin, a role defined as citywide COA oversight, and an audit trail that
+stopped at an office boundary could not answer the question it exists for.
+
+The exemption belongs to those three endpoints and nowhere else. The first two
+return payload content rather than a bare list of actions, so the same shape
+behind a permission a scoped role holds would be a disclosure. These are the
+*sanctioned* citywide reads - decided, permission-gated and commented as such -
+which is a different thing from the four modules still exempt from the rule
+confining database access to `app/Repo/`. Those are listed in
+`DatabaseAccessTest`'s grandfather list, a debt ledger that may only shrink.
+
 `*` is every permission, and only Admin holds it.
 
 ## Matrix

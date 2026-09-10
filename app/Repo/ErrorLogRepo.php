@@ -64,6 +64,11 @@ final class ErrorLogRepo
      * Newest first, optionally filtered - the read side of the Audit Logs
      * screen's new companion table.
      *
+     * Takes no `$user` and applies no `ScopeGateway::where()` on purpose: this
+     * is one of the two deliberate citywide reads of per-user activity, both
+     * gated on `log.view`. `apiGetErrorLog()` carries the reasoning; the other
+     * is `apiGetLogs()`.
+     *
      * @return array<int, array<string, mixed>>
      */
     public static function recent(?string $source, ?string $search, int $limit = 300): array
