@@ -353,9 +353,27 @@ function apiGetRoles(array $p, array $user): array
     return $out;
 }
 
-/** Filtered audit log, newest first. */
+/**
+ * Filtered audit log, newest first.
+ *
+ * **The missing scope predicate is deliberate, not an oversight.** `log.view`
+ * is held only by Internal Auditor and Admin, and that role is defined as
+ * citywide COA oversight - an audit trail that stopped at an office boundary
+ * could not answer the question it exists to answer. `$user` is therefore
+ * accepted and unused - one of exactly two places where that is correct, the
+ * other being `apiGetErrorLog()`, which shares this permission.
+ *
+ * Do not copy it. This reads *content*, not merely a list of actions:
+ * `Logs.Details` carries request payloads, so the same query behind any
+ * permission a scoped role can hold would be a disclosure. That this file is
+ * one of the four still on `DatabaseAccessTest`'s grandfather list is not the
+ * licence: the exemption is this endpoint and `apiGetErrorLog()`, decided and
+ * gated on `log.view`, plus `aggregate.citywide` - not every query that
+ * happens to sit in an allowlisted module.
+ */
 function apiGetLogs(array $p, array $user): array
 {
+    // Citywide by decision - see the docblock. No ScopeGateway::where() here.
     $sql = 'SELECT * FROM Logs WHERE 1=1';
     $params = [];
     if (!empty($p['dateFrom'])) { $sql .= ' AND Timestamp >= ?'; $params[] = $p['dateFrom'] . ' 00:00:00'; }

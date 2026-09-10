@@ -89,7 +89,21 @@ function currentRequestUrl(): string
     return $host !== '' ? $host . $uri : $uri;
 }
 
-/** Filtered application error log, newest first - the Audit Logs screen's companion table. */
+/**
+ * Filtered application error log, newest first - the Audit Logs screen's
+ * companion table.
+ *
+ * **Citywide by the same decision as `apiGetLogs()`**, whose docblock carries
+ * the reasoning: it shares `log.view`, so it shares that permission's holders
+ * (Internal Auditor and Admin) and its citywide reach. `$user` is accepted and
+ * unused for that reason, not because scoping was forgotten.
+ *
+ * `ErrorLog` has no office column to scope *by* - it is shaped after `Logs`,
+ * an append-only operational record - but it is still content rather than a
+ * list: `Url` and `Trace` can carry request values. Widening `log.view` to a
+ * scoped role would therefore mean answering what an error's office is before
+ * this query could be made safe.
+ */
 function apiGetErrorLog(array $p, array $user): array
 {
     return ErrorLogRepo::recent(
