@@ -52,6 +52,51 @@ function busy(promise) {
   return promise.finally(function () { el.classList.remove('show'); });
 }
 
+/* ---- client-side error reporting -----------------------------------------
+   The server-side counterpart is app/ErrorLog.php - a RuntimeException from
+   api() already reaches the user as a toast with a written-for-a-timekeeper
+   message, so it is not reported here. This is for the other kind: a screen
+   throwing mid-render, a typo in a page module, a rejected promise nobody
+   attached a .catch to - errors that would otherwise only ever show up as
+   "the page did nothing" with no record anywhere.
+   ------------------------------------------------------------------------- */
+
+var _errorReportCount = 0;
+var _errorReportSeen = {};
+
+/**
+ * Reports one client-side error to apiLogClientError, capped per page load
+ * (20) and deduped by message+file+line so one error thrown on every
+ * mousemove does not flood the table.
+ */
+function reportClientError(message, file, line, stack) {
+  if (_errorReportCount >= 20) return;
+  var key = message + '|' + file + '|' + line;
+  if (_errorReportSeen[key]) return;
+  _errorReportSeen[key] = true;
+  _errorReportCount++;
+  // silent: true - a failed error report (e.g. session already expired)
+  // must not itself pop a toast on top of whatever the user was seeing.
+  api('apiLogClientError', {
+    message: String(message || '').slice(0, 2000),
+    file: String(file || ''),
+    line: line || 0,
+    stack: String(stack || '').slice(0, 4000),
+    url: location.href,
+    userAgent: navigator.userAgent
+  }, true).catch(function () { /* nothing left to do if the report itself fails */ });
+}
+
+window.addEventListener('error', function (e) {
+  reportClientError(e.message, e.filename, e.lineno, e.error && e.error.stack);
+});
+
+window.addEventListener('unhandledrejection', function (e) {
+  var reason = e.reason;
+  var message = 'Unhandled promise rejection: ' + (reason && reason.message ? reason.message : String(reason));
+  reportClientError(message, '', 0, reason && reason.stack);
+});
+
 /* ---- formatting helpers ------------------------------------------------- */
 
 /** Escapes text for HTML interpolation. */
@@ -229,13 +274,14 @@ function applyBranding(settings) {
   }
 }
 
-/** Activates a page and runs its module's init(). */
-function showPage(name) {
+/** Activates a page and runs its module's init(params). */
+function showPage(name, params) {
   // Navigating away from a dirty full-page editor (payroll grid) confirms first.
   if (App.editorDirty &&
       !window.confirm('You have unsaved changes. Leave this page and discard them?')) {
     return;
   }
+  if (!Pages[name]) name = 'dashboard';
   App.editorDirty = false;
   App.current = name;
   document.querySelectorAll('.page').forEach(function (p) {
@@ -247,8 +293,74 @@ function showPage(name) {
   document.getElementById('page-title').textContent = PAGE_TITLES[name] || name;
   document.body.classList.toggle('watermark-on', WATERMARK_PAGES.indexOf(name) >= 0);
   document.body.classList.remove('sidebar-open');
-  if (Pages[name] && Pages[name].init) Pages[name].init();
+  if (Pages[name] && Pages[name].init) Pages[name].init(params || {});
 }
+
+/* ---- URL state: shareable filtered views --------------------------------
+   Phase 9E. The hash carries {page, filters} - '#payroll?Status=DRAFT' -
+   so a link copied out of the address bar reopens the same page filtered the
+   same way. A page module that wants this calls syncUrl(name, params) after
+   every filter change; parseHash() is what an init(params) call already
+   receives, and reading it directly is only for the rare case of wanting it
+   outside that lifecycle. */
+
+/** The current hash as {page, params} - every param a plain string. */
+function parseHash() {
+  var h = location.hash.replace(/^#/, '');
+  var qIdx = h.indexOf('?');
+  var page = (qIdx >= 0 ? h.slice(0, qIdx) : h) || 'dashboard';
+  var params = {};
+  if (qIdx >= 0) {
+    new URLSearchParams(h.slice(qIdx + 1)).forEach(function (v, k) { params[k] = v; });
+  }
+  return { page: page, params: params };
+}
+
+/**
+ * A filter object as a query string, blank/null/undefined values dropped -
+ * so a facet nobody chose does not show up as "OfficeCode=" in a shared link
+ * or an export URL, and keys sort alphabetically so the same filters always
+ * produce the same string whichever order the form fields happen to be in.
+ * @param {Object<string,string>} params
+ * @return {string} without a leading '?'
+ */
+function queryString(params) {
+  var qs = new URLSearchParams();
+  Object.keys(params || {}).sort().forEach(function (k) {
+    var v = params[k];
+    if (v !== '' && v !== null && v !== undefined) qs.set(k, v);
+  });
+  return qs.toString();
+}
+
+/**
+ * Rewrites the address bar to reflect a page's current filters, without
+ * navigating. history.replaceState() fires no hashchange event, which is the
+ * whole point - a filter bar calls this after every change so the link stays
+ * shareable, and none of those calls re-triggers showPage().
+ */
+function syncUrl(page, params) {
+  var s = queryString(params);
+  var url = '#' + page + (s ? '?' + s : '');
+  if (location.hash !== url) history.replaceState(null, '', url);
+}
+
+/**
+ * A real navigation to a page, optionally pre-filtered - the sidebar, a
+ * dashboard watchlist card, or the global search box all go through this
+ * rather than setting location.hash directly, so there is one code path
+ * rather than one that also has to be replayed by the hashchange listener.
+ */
+function goToPage(page, params) {
+  syncUrl(page, params || {});
+  showPage(page, params || {});
+}
+
+/** Back/forward, or a hash pasted/typed directly into the address bar. */
+window.addEventListener('hashchange', function () {
+  var h = parseHash();
+  showPage(h.page, h.params);
+});
 
 /** Refreshes the shared dropdown data (offices, periods, ...). */
 function loadLookups() {
@@ -332,14 +444,32 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // Sidebar navigation.
+  // Sidebar navigation. goToPage() rather than showPage() directly, so a
+  // fresh visit from the sidebar also clears any filter state left in the
+  // address bar from a previous visit or a shared link - navigating IN is
+  // what a role's default view (Phase 9E) applies against.
   document.querySelectorAll('.nav-item-link[data-page]').forEach(function (a) {
-    a.onclick = function () { showPage(a.dataset.page); };
+    a.onclick = function () { goToPage(a.dataset.page); };
   });
 
   // Logout.
   document.getElementById('btn-logout').onclick = function () {
     location.href = 'logout.php';
+  };
+
+  // Global control-number search (Phase 9E).
+  document.getElementById('global-search-form').onsubmit = function (e) {
+    e.preventDefault();
+    var box = document.getElementById('global-search');
+    var term = box.value.trim();
+    if (!term) return;
+    api('apiGlobalSearch', { q: term }).then(function (d) {
+      if (!d.found) return toast('No record found for "' + term + '".', 'warning');
+      var params = { search: d.term };
+      if (d.tab) params.tab = d.tab;
+      goToPage(d.page, params);
+      box.value = '';
+    });
   };
 
   // Session bootstrap.
@@ -368,6 +498,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     return loadLookups();
   }).then(function () {
-    showPage('dashboard');
+    // A shared link or a page reload lands back where it pointed; a plain
+    // visit to the site (no hash yet) still opens the dashboard.
+    var h = parseHash();
+    showPage(h.page, h.params);
   }).catch(function () { /* toast/redirect already handled */ });
 });

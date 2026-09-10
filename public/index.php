@@ -93,6 +93,17 @@ if (empty($_SESSION['email'])) {
       </button>
       <h5 id="page-title">Dashboard</h5>
       <div class="ms-auto d-flex gap-2 align-items-center">
+        <!-- Global control-number search (Phase 9E). One box: a payroll no.,
+             a memo/travel-order control no., a contract ID or an employee no.
+             jumps straight to the screen that record lives on. -->
+        <form id="global-search-form" class="d-none d-sm-block" autocomplete="off">
+          <div class="input-group input-group-sm" style="width:230px">
+            <span class="input-group-text bg-transparent border-end-0">
+              <span class="material-icons" style="font-size:16px">search</span></span>
+            <input class="form-control border-start-0" id="global-search"
+                   placeholder="Jump to control no....">
+          </div>
+        </form>
         <button class="btn btn-sm btn-outline-secondary" id="btn-theme" title="Toggle dark mode">
           <span class="material-icons" style="font-size:18px;vertical-align:-4px">dark_mode</span>
         </button>

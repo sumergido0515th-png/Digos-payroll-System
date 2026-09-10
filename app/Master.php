@@ -14,6 +14,18 @@ use Digos\Repo\EmployeeRepo;
  * Employees
  * ======================================================================== */
 
+/**
+ * The choices the employee filter bar may offer this user.
+ *
+ * Scoped in the repository, like every other read - a dropdown listing offices
+ * the caller cannot see would disclose the org chart before a row is fetched.
+ * See tests/Integration/FilterScopeTest.php.
+ */
+function apiGetEmployeeFacets(array $p, array $user): array
+{
+    return EmployeeRepo::facetOptionsScoped($user);
+}
+
 /** Lists employees with live search + filters + pagination, within scope. */
 function apiListEmployees(array $p, array $user): array
 {
@@ -21,7 +33,7 @@ function apiListEmployees(array $p, array $user): array
         $e = aliasFunctionOut($e);
         $e['FullName'] = fullName($e);
         return $e;
-    }, EmployeeRepo::listScoped($user, $p, EmployeeRepo::mayReadSensitive($user)));
+    }, EmployeeRepo::search($user, $p, EmployeeRepo::mayReadSensitive($user)));
 
     $page = max(1, (int) num($p['page'] ?? 1));
     $size = (int) num($p['pageSize'] ?? 25) ?: 25;

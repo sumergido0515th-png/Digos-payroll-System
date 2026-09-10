@@ -26,6 +26,9 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 use RuntimeException;
 
 final class ContractRepo
@@ -34,34 +37,72 @@ final class ContractRepo
     private const EMPLOYEE_NAME = "CONCAT(e.LastName, ', ', e.FirstName) AS EmployeeName";
 
     /**
+     * The FROM body. A contract is about a person, so the join to Employees is
+     * what carries the scope; the list and the facet options run over the same
+     * one so an option cannot come from a row the list would not return.
+     */
+    private const FROM = 'Contracts c JOIN Employees e ON e.EmployeeID = c.EmployeeID';
+
+    /**
      * Contracts within the caller's scope, newest engagement first.
      *
      * @param array<string, mixed> $filters EmployeeID, Status
      * @return array<int, array<string, mixed>>
      */
-    public static function listScoped(array $user, array $filters = []): array
+    public static function search(array $user, array $payload = []): array
     {
         $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $spec = FilterSpec::fromPayload('Contracts', $payload);
+        $filter = FilterSql::build($spec, 'c.');
 
-        $sql = 'SELECT c.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
-                  FROM Contracts c
-                  JOIN Employees e ON e.EmployeeID = c.EmployeeID
-                 WHERE ' . $scope['sql'];
-        $params = $scope['params'];
+        return DB::rows(
+            'SELECT c.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec, 'c.'),
+            array_merge($scope['params'], $filter['params']));
+    }
 
-        if (!empty($filters['EmployeeID'])) {
-            $sql .= ' AND c.EmployeeID = ?'; $params[] = $filters['EmployeeID'];
-        }
-        if (!empty($filters['Status'])) {
-            $sql .= ' AND c.Status = ?'; $params[] = $filters['Status'];
-        }
-        if (!empty($filters['search'])) {
-            $sql .= ' AND (e.LastName LIKE ? OR c.Remarks LIKE ? OR c.ContractID LIKE ?)';
-            $like = '%' . $filters['search'] . '%';
-            array_push($params, $like, $like, $like);
-        }
+    /** @return array<string, array<int, string>> */
+    public static function facetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'Contracts', self::FROM,
+            ScopeGateway::where($user, 'Employees', 'e.'), 'c.');
+    }
 
-        return DB::rows($sql . ' ORDER BY c.StartDate DESC, e.LastName, e.FirstName', $params);
+    /**
+     * Contracts within the caller's scope.
+     *
+     * Kept as the name the modules already call; it is search().
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function listScoped(array $user, array $filters = []): array
+    {
+        return self::search($user, $filters);
+    }
+
+    /**
+     * Contracts within the caller's scope ending on or before a period's end.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * over the same join, so a caller cannot be shown a contract on this list
+     * they could not already read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function expiringByScoped(array $user, string $periodEnd): array
+    {
+        $scope = ScopeGateway::where($user, 'Employees', 'e.');
+        $watch = Watchlists::contractsEndingBy($periodEnd, 'c.');
+
+        return DB::rows(
+            'SELECT c.*, ' . self::EMPLOYEE_NAME . ', e.OfficeCode
+               FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY c.EndDate',
+            array_merge($scope['params'], $watch['params']));
     }
 
     /** One contract, or null when absent or out of scope. */

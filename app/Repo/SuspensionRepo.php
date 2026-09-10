@@ -14,9 +14,19 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
+use Digos\Domain\Query\Watchlists;
 
 final class SuspensionRepo
 {
+    /**
+     * The FROM body. A suspension is scoped through the payroll it was raised
+     * against, so the join is what carries the scope and both the list and the
+     * facet options must run over it.
+     */
+    private const FROM = 'Suspensions s JOIN Payroll h ON h.PayrollNo = s.PayrollNo';
+
     /**
      * Next sequential NS number, e.g. "NS-2026-000001".
      *
@@ -48,21 +58,89 @@ final class SuspensionRepo
      * @param array<string, mixed> $filters PayrollNo, Status, EmployeeID
      * @return array<int, array<string, mixed>>
      */
+    public static function search(array $user, array $payload = []): array
+    {
+        // The two aliases differ on purpose: the scope predicate is built for
+        // Payroll on 'h.' because that is what a suspension is scoped BY,
+        // while the filters sit on 's.' because that is what is being
+        // filtered. FilterSql takes its own alias for exactly this case.
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $spec = FilterSpec::fromPayload('Suspensions', $payload);
+        $filter = FilterSql::build($spec, 's.');
+
+        return DB::rows(
+            'SELECT s.* FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $filter['sql'] . '
+              ORDER BY ' . FilterSql::orderBy($spec, 's.'),
+            array_merge($scope['params'], $filter['params']));
+    }
+
+    /** @return array<string, array<int, string>> */
+    public static function facetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'Suspensions', self::FROM,
+            ScopeGateway::where($user, 'Payroll', 'h.'), 's.');
+    }
+
+    /**
+     * Suspensions on payrolls the caller may see.
+     *
+     * Kept as the name the modules already call; it is search().
+     *
+     * @return array<int, array<string, mixed>>
+     */
     public static function listScoped(array $user, array $filters = []): array
     {
-        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        return self::search($user, $filters);
+    }
 
-        $sql = 'SELECT s.* FROM Suspensions s
-                  JOIN Payroll h ON h.PayrollNo = s.PayrollNo
-                 WHERE ' . $scope['sql'];
+    /**
+     * Suspensions on payrolls the caller may see, still Open past their
+     * deadline.
+     *
+     * Composed the same way search() is - WHERE (scope) AND (watchlist) -
+     * over the same join, so a caller cannot be shown a suspension on this
+     * list they could not already read on the ordinary one.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function pastDeadlineScoped(array $user, string $today): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $watch = Watchlists::suspensionsPastDeadline($today, 's.');
+
+        return DB::rows(
+            'SELECT s.* FROM ' . self::FROM . '
+              WHERE ' . $scope['sql'] . ' AND ' . $watch['sql'] . '
+              ORDER BY s.Deadline',
+            array_merge($scope['params'], $watch['params']));
+    }
+
+    /**
+     * Ground, raised and settled timestamps for suspensions in the caller's
+     * scope, optionally bounded by RaisedAt - the raw material for
+     * Digos\Domain\Reports\OperationalMetrics::suspensionActivity(), which
+     * does the counting. Every column that function reads and nothing else,
+     * so a caller cannot be handed more than the metric needs.
+     *
+     * @return array<int, array{GroundCode: string, RaisedAt: string, SettledAt: ?string}>
+     */
+    public static function activityScoped(array $user, ?string $from, ?string $to): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $clauses = [$scope['sql']];
         $params = $scope['params'];
 
-        foreach (['PayrollNo' => 's.PayrollNo', 'Status' => 's.Status',
-                'EmployeeID' => 's.EmployeeID'] as $field => $column) {
-            if (!empty($filters[$field])) { $sql .= " AND $column = ?"; $params[] = $filters[$field]; }
-        }
+        if ($from !== null) { $clauses[] = 's.RaisedAt >= ?'; $params[] = $from; }
+        // Inclusive of the whole day named, the same "to the 16th means through
+        // the 16th" reasoning FilterSql applies to a DATETIME column.
+        if ($to !== null) { $clauses[] = 's.RaisedAt < ? + INTERVAL 1 DAY'; $params[] = $to; }
 
-        return DB::rows($sql . ' ORDER BY s.RaisedAt DESC', $params);
+        return DB::rows(
+            'SELECT s.GroundCode, s.RaisedAt, s.SettledAt FROM ' . self::FROM . '
+              WHERE ' . implode(' AND ', $clauses),
+            $params);
     }
 
     /** Open suspensions for one payroll, unscoped - the caller already holds it. */

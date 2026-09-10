@@ -25,9 +25,13 @@ const ROUTES = [
 
     // Dashboard
     'apiGetDashboard' => ['dashboard.view', 'Dashboard', ''],
+    // Every role holds dashboard.view; apiGlobalSearch checks each candidate
+    // entity's own permission itself, so this only gates "signed in at all".
+    'apiGlobalSearch' => ['dashboard.view', 'Dashboard', ''],
 
     // Employees
     'apiListEmployees' => ['employee.view', 'Employees', ''],
+    'apiGetEmployeeFacets' => ['employee.view', 'Employees', ''],
     'apiGetEmployee' => ['employee.view', 'Employees', ''],
     'apiSaveEmployee' => ['employee.edit', 'Employees', 'SAVE_EMPLOYEE'],
     'apiDeleteEmployee' => ['employee.delete', 'Employees', 'DELETE_EMPLOYEE'],
@@ -59,6 +63,7 @@ const ROUTES = [
     // Payroll
     'apiComputePayroll' => ['payroll.view', 'Payroll', ''],
     'apiListPayrolls' => ['payroll.view', 'Payroll', ''],
+    'apiGetPayrollFacets' => ['payroll.view', 'Payroll', ''],
     'apiGetPayroll' => ['payroll.view', 'Payroll', ''],
     'apiSavePayroll' => ['payroll.edit', 'Payroll', 'SAVE_PAYROLL'],
     'apiDeletePayroll' => ['payroll.edit', 'Payroll', 'DELETE_PAYROLL'],
@@ -74,19 +79,27 @@ const ROUTES = [
     'apiSuspendPayroll' => ['payroll.suspend', 'Payroll', 'SUSPEND_PAYROLL'],
     'apiSettleSuspension' => ['payroll.suspend', 'Suspensions', 'SETTLE_SUSPENSION'],
     'apiListSuspensions' => ['payroll.view', 'Suspensions', ''],
+    'apiGetSuspensionFacets' => ['payroll.view', 'Suspensions', ''],
+    'apiGetSuspensionWatchlist' => ['payroll.view', 'Suspensions', ''],
+    'apiGetCitywidePayrollTotals' => ['aggregate.citywide', 'Payroll', ''],
     'apiQueueForPrinting' => ['print.run', 'Payroll', 'QUEUE_FOR_PRINTING'],
     'apiMarkPrinted' => ['print.run', 'Payroll', 'MARK_PRINTED'],
     'apiGetWorklist' => ['payroll.approve', 'PreAudit', ''],
 
     // Documents (Phase 3)
     'apiListMemoranda' => ['document.view', 'Memorandum', ''],
+    'apiGetMemorandumFacets' => ['document.view', 'Memorandum', ''],
+    'apiGetMemorandumWatchlist' => ['document.view', 'Memorandum', ''],
     'apiGetMemorandum' => ['document.view', 'Memorandum', ''],
     'apiSaveMemorandum' => ['document.edit', 'Memorandum', 'SAVE_MEMORANDUM'],
     'apiDeleteMemorandum' => ['document.delete', 'Memorandum', 'DELETE_MEMORANDUM'],
     'apiListBioExemptions' => ['document.view', 'BioExemptions', ''],
+    'apiGetBioExemptionFacets' => ['document.view', 'BioExemptions', ''],
+    'apiGetBioExemptionWatchlist' => ['document.view', 'BioExemptions', ''],
     'apiSaveBioExemption' => ['document.edit', 'BioExemptions', 'SAVE_BIO_EXEMPTION'],
     'apiDeleteBioExemption' => ['document.delete', 'BioExemptions', 'DELETE_BIO_EXEMPTION'],
     'apiListTravelOrders' => ['document.view', 'TravelOrders', ''],
+    'apiGetTravelOrderFacets' => ['document.view', 'TravelOrders', ''],
     'apiSaveTravelOrder' => ['document.edit', 'TravelOrders', 'SAVE_TRAVEL_ORDER'],
     'apiDeleteTravelOrder' => ['document.delete', 'TravelOrders', 'DELETE_TRAVEL_ORDER'],
 
@@ -96,6 +109,8 @@ const ROUTES = [
     'apiGetWorkShiftHistory' => ['shift.view', 'WorkShifts', ''],
     'apiSaveWorkShift' => ['shift.edit', 'WorkShifts', 'SAVE_WORK_SHIFT'],
     'apiListContracts' => ['contract.view', 'Contracts', ''],
+    'apiGetContractFacets' => ['contract.view', 'Contracts', ''],
+    'apiGetContractWatchlist' => ['contract.view', 'Contracts', ''],
     'apiGetContractHistory' => ['contract.view', 'Contracts', ''],
     'apiSaveContract' => ['contract.edit', 'Contracts', 'SAVE_CONTRACT'],
     'apiAmendContract' => ['contract.edit', 'Contracts', 'AMEND_CONTRACT'],
@@ -126,6 +141,7 @@ const ROUTES = [
 
     // Reports & print
     'apiRunReport' => ['report.view', 'Reports', 'RUN_REPORT'],
+    'apiGetOperationalMetrics' => ['report.view', 'Reports', ''],
     'apiGetPrintHtml' => ['print.run', 'Print', 'PRINT'],
 
     // Users & logs (Administrator only via '*')
@@ -134,6 +150,12 @@ const ROUTES = [
     'apiDeleteUser' => ['user.manage', 'Users', 'DELETE_USER'],
     'apiGetRoles' => ['user.manage', 'Users', ''],
     'apiGetLogs' => ['log.view', 'Logs', ''],
+
+    // Application error log (out of phase, see app/ErrorLog.php). Read side
+    // shares log.view with the audit log; the write side is any signed-in
+    // user reporting a browser-side error, not a permission-gated action.
+    'apiGetErrorLog' => ['log.view', 'ErrorLog', ''],
+    'apiLogClientError' => ['', 'ErrorLog', ''],
 
     // Scope grants. Every mutation is audited: this is the table that decides
     // who can see which office's payroll, so a change to it is exactly the kind
@@ -188,6 +210,21 @@ try {
     echo json_encode(ok($data));
 
 } catch (Throwable $e) {
-    error_log('API error: ' . $e->getMessage());
-    echo json_encode(fail($e->getMessage()));
+    if ($e instanceof RuntimeException) {
+        // The documented contract (CLAUDE.md > Conventions > Errors): thrown
+        // on purpose, with a message written for a timekeeper. Safe to
+        // return verbatim, exactly as before.
+        error_log('API error: ' . $e->getMessage());
+        echo json_encode(fail($e->getMessage()));
+    } else {
+        // Everything else - TypeError, PDOException, Error - was never
+        // written to be read by the person who triggered it, and its
+        // message can say things a RuntimeException's never would: a file
+        // path, a query fragment, a class name. Log it in full and hand
+        // back a reference instead of $e->getMessage().
+        $ref = logUnexpectedError($e);
+        error_log('API error [unexpected, ref ' . $ref . ']: ' . $e->getMessage());
+        echo json_encode(fail(
+            'An unexpected error occurred. Reference: ' . $ref . '. Please contact support.'));
+    }
 }

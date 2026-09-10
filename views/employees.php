@@ -20,6 +20,13 @@
             <span class="material-icons">person_add</span> New Employee</button>
         </div>
       </div>
+      <div class="row g-2 mt-1">
+        <div class="col-12 text-end">
+          <!-- Same filters the list is showing - see public/export.php. -->
+          <a class="btn btn-sm btn-outline-secondary" id="emp-export" href="export.php?entity=Employees" target="_blank">
+            <span class="material-icons" style="font-size:16px;vertical-align:-3px">download</span> Export CSV</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -87,36 +94,47 @@
 Pages.employees = (function () {
   var state = { page: 1, pageSize: 20 };
 
-  /** Collects the filter bar into an apiListEmployees payload. */
-  function payload() {
+  /**
+   * The filter bar's state alone - what a shared link or an export means by
+   * "these employees". Deliberately excludes page/pageSize: a copied link
+   * should land on page 1 of the same filters rather than reproducing
+   * whichever page someone happened to be looking at, and an export is every
+   * matching row, never one page of them - both read from here, not from
+   * state.page/pageSize.
+   */
+  function filters() {
     return {
       search: document.getElementById('emp-search').value,
       OfficeCode: document.getElementById('emp-f-office').value,
       EmploymentType: document.getElementById('emp-f-type').value,
-      Status: document.getElementById('emp-f-status').value,
-      page: state.page, pageSize: state.pageSize
+      Status: document.getElementById('emp-f-status').value
     };
   }
 
   /** Loads and renders the employee table. */
   function load() {
-    api('apiListEmployees', payload()).then(function (d) {
-      document.getElementById('emp-count').textContent =
-        d.total + ' employee(s) - page ' + d.page;
-      document.getElementById('emp-rows').innerHTML = d.rows.map(function (e) {
-        return '<tr><td>' + esc(e.EmployeeNo || e.EmployeeID) + '</td>' +
-          '<td class="fw-semibold">' + esc(e.FullName) + '</td>' +
-          '<td>' + esc(e.Position) + '</td><td>' + esc(e.OfficeCode) + '</td>' +
-          '<td>' + esc(e.EmploymentType) + '</td>' +
-          '<td class="text-nowrap">' + (e.CashCard ? esc(e.CashCard) : '<span class="text-muted">&mdash;</span>') + '</td>' +
-          '<td class="text-money">' + fmtMoney(e.DailyRate) + '</td>' +
-          '<td>' + badge(e.Status) + '</td>' +
-          '<td class="text-end text-nowrap">' +
-          (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit(\'' + e.EmployeeID + '\')') : '') +
-          (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove(\'' + e.EmployeeID + '\')', 'text-danger') : '') +
-          '</td></tr>';
-      }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No employees found.</td></tr>';
-    });
+    var f = filters();
+    syncUrl('employees', f);
+    document.getElementById('emp-export').href = 'export.php?entity=Employees&' + queryString(f);
+
+    api('apiListEmployees', Object.assign({ page: state.page, pageSize: state.pageSize }, f))
+      .then(function (d) {
+        document.getElementById('emp-count').textContent =
+          d.total + ' employee(s) - page ' + d.page;
+        document.getElementById('emp-rows').innerHTML = d.rows.map(function (e) {
+          return '<tr><td>' + esc(e.EmployeeNo || e.EmployeeID) + '</td>' +
+            '<td class="fw-semibold">' + esc(e.FullName) + '</td>' +
+            '<td>' + esc(e.Position) + '</td><td>' + esc(e.OfficeCode) + '</td>' +
+            '<td>' + esc(e.EmploymentType) + '</td>' +
+            '<td class="text-nowrap">' + (e.CashCard ? esc(e.CashCard) : '<span class="text-muted">&mdash;</span>') + '</td>' +
+            '<td class="text-money">' + fmtMoney(e.DailyRate) + '</td>' +
+            '<td>' + badge(e.Status) + '</td>' +
+            '<td class="text-end text-nowrap">' +
+            (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit(\'' + e.EmployeeID + '\')') : '') +
+            (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove(\'' + e.EmployeeID + '\')', 'text-danger') : '') +
+            '</td></tr>';
+        }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No employees found.</td></tr>';
+      });
   }
 
   /** Small icon action button. */
@@ -204,14 +222,28 @@ Pages.employees = (function () {
   }
 
   return {
-    init: function () {
+    init: function (params) {
       var lk = App.lookups;
-      document.getElementById('emp-f-office').innerHTML =
-        options(lk.offices, 'OfficeCode', 'OfficeName', '', 'All Offices');
       document.getElementById('emp-f-type').innerHTML =
         options(lk.employmentTypes, null, null, '', 'All Types');
       document.getElementById('emp-f-status').innerHTML =
         options(lk.statuses, null, null, '', 'All Status');
+
+      // Scoped - apiGetEmployeeFacets(), never the citywide App.lookups.offices
+      // - so this dropdown can never offer an office the caller could not
+      // already see an employee in.
+      busy(api('apiGetEmployeeFacets')).then(function (facets) {
+        document.getElementById('emp-f-office').innerHTML =
+          options(facets.OfficeCode || [], null, null, '', 'All Offices (in your scope)');
+
+        params = params || {};
+        document.getElementById('emp-search').value = params.search || '';
+        document.getElementById('emp-f-office').value = params.OfficeCode || '';
+        document.getElementById('emp-f-type').value = params.EmploymentType || '';
+        document.getElementById('emp-f-status').value = params.Status || '';
+        state.page = 1;
+        load();
+      });
 
       var reload = function () { state.page = 1; load(); };
       document.getElementById('emp-search').oninput = debounce(reload);
@@ -225,8 +257,6 @@ Pages.employees = (function () {
       var add = document.getElementById('emp-add');
       add.style.display = can('employee.edit') ? '' : 'none';
       add.onclick = function () { openEditor(null); };
-      state.page = 1;
-      load();
     },
     edit: function (id) {
       busy(api('apiGetEmployee', { EmployeeID: id })).then(openEditor);

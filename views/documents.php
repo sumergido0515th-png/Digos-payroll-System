@@ -24,6 +24,11 @@
             <option>Superseded</option><option>Inactive</option>
           </select></div>
         <div class="col-md-4 text-end">
+          <!-- Same filters the active tab is showing - see public/export.php.
+               Absent on the Work Shifts tab, which is unscoped reference
+               data rather than a FilterSpec entity - see init() below. -->
+          <a class="btn btn-sm btn-outline-secondary" id="doc-export" href="#" target="_blank">
+            <span class="material-icons" style="font-size:16px;vertical-align:-3px">download</span> Export CSV</a>
           <button class="btn btn-sm btn-gov" id="doc-new">
             <span class="material-icons" style="font-size:18px;vertical-align:-4px">add</span>
             New
@@ -62,7 +67,7 @@ Pages.documents = (function () {
   var TABS = {
     memo: {
       title: 'Memorandum', list: 'apiListMemoranda', save: 'apiSaveMemorandum',
-      remove: 'apiDeleteMemorandum', key: 'MemoID',
+      remove: 'apiDeleteMemorandum', key: 'MemoID', entity: 'Memorandum',
       perm: 'document.edit', delPerm: 'document.delete',
       head: ['Control No.', 'Subject', 'Authority', 'Office', 'Effectivity', 'Covers', 'Status'],
       cells: function (r) {
@@ -72,7 +77,7 @@ Pages.documents = (function () {
     },
     bioex: {
       title: 'Bio Exemption', list: 'apiListBioExemptions', save: 'apiSaveBioExemption',
-      remove: 'apiDeleteBioExemption', key: 'ExemptionID',
+      remove: 'apiDeleteBioExemption', key: 'ExemptionID', entity: 'BioExemptions',
       perm: 'document.edit', delPerm: 'document.delete',
       head: ['Employee', 'Office', 'Reason', 'Valid From', 'Valid To', 'Proof', 'Status'],
       cells: function (r) {
@@ -82,7 +87,7 @@ Pages.documents = (function () {
     },
     travel: {
       title: 'Travel Order', list: 'apiListTravelOrders', save: 'apiSaveTravelOrder',
-      remove: 'apiDeleteTravelOrder', key: 'TravelOrderID',
+      remove: 'apiDeleteTravelOrder', key: 'TravelOrderID', entity: 'TravelOrders',
       perm: 'document.edit', delPerm: 'document.delete',
       head: ['T.O. No.', 'Employee', 'Destination', 'Depart', 'Return', 'Per Diem', 'Status'],
       cells: function (r) {
@@ -102,7 +107,7 @@ Pages.documents = (function () {
     },
     contract: {
       title: 'Contract', list: 'apiListContracts', save: 'apiSaveContract',
-      key: 'ContractID', perm: 'contract.edit',
+      key: 'ContractID', entity: 'Contracts', perm: 'contract.edit',
       head: ['Employee', 'Office', 'Type', 'Basis', 'Rate', 'Start', 'End', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.TypeCode || '-', r.RateBasis,
@@ -135,15 +140,24 @@ Pages.documents = (function () {
   /** Loads and renders the active tab. */
   function load() {
     var cfg = TABS[tab];
+    var filters = {
+      search: document.getElementById('doc-search').value,
+      Status: document.getElementById('doc-status').value
+    };
+
+    // The tab is part of the shareable state too, not just the filters - a
+    // link to the Bio Exemptions tab should reopen there, not on Memoranda.
+    syncUrl('documents', Object.assign({ tab: tab }, filters));
+
+    var exportBtn = document.getElementById('doc-export');
+    exportBtn.style.display = cfg.entity ? '' : 'none';
+    if (cfg.entity) exportBtn.href = 'export.php?entity=' + cfg.entity + '&' + queryString(filters);
 
     document.getElementById('doc-head').innerHTML = '<tr>' +
       cfg.head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') +
       '<th class="text-end">Actions</th></tr>';
 
-    api(cfg.list, {
-      search: document.getElementById('doc-search').value,
-      Status: document.getElementById('doc-status').value
-    }).then(function (rows) {
+    api(cfg.list, filters).then(function (rows) {
       document.getElementById('doc-rows').innerHTML = rows.map(function (r) {
         var id = r[cfg.key];
         return '<tr>' + cfg.cells(r).map(function (c, i) {
@@ -303,28 +317,36 @@ Pages.documents = (function () {
     ]);
   }
 
+  /** Switches the active tab without loading - init(params) and the tab clicks both use this. */
+  function selectTab(name) {
+    if (!TABS[name]) return;
+    tab = name;
+    document.querySelectorAll('#doc-tabs .nav-link').forEach(function (a) {
+      a.classList.toggle('active', a.dataset.doc === name);
+    });
+    document.getElementById('doc-new').style.display = can(TABS[tab].perm) ? '' : 'none';
+  }
+
   return {
     _rows: [],
 
-    init: function () {
+    init: function (params) {
+      params = params || {};
+
       document.querySelectorAll('#doc-tabs .nav-link').forEach(function (a) {
         a.onclick = function (e) {
           e.preventDefault();
-          document.querySelectorAll('#doc-tabs .nav-link').forEach(function (x) {
-            x.classList.remove('active');
-          });
-          a.classList.add('active');
-          tab = a.dataset.doc;
-          document.getElementById('doc-new').style.display =
-            can(TABS[tab].perm) ? '' : 'none';
+          selectTab(a.dataset.doc);
           load();
         };
       });
+      selectTab(params.tab || 'memo');
+      document.getElementById('doc-search').value = params.search || '';
+      document.getElementById('doc-status').value = params.Status || '';
 
       document.getElementById('doc-search').oninput = debounce(load);
       document.getElementById('doc-status').onchange = load;
       document.getElementById('doc-new').onclick = function () { openForm(null); };
-      document.getElementById('doc-new').style.display = can(TABS[tab].perm) ? '' : 'none';
 
       // The employee pickers must offer only what the caller may see, so they
       // come from the scoped endpoint rather than from a lookup table.

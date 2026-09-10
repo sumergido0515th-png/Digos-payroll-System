@@ -28,9 +28,15 @@ require_once __DIR__ . '/Domain/Rules/Finding.php';
 require_once __DIR__ . '/Domain/Rules/RuleEngine.php';
 require_once __DIR__ . '/Domain/Workflow/PayrollWorkflow.php';
 require_once __DIR__ . '/Domain/Print/PayloadHash.php';
+require_once __DIR__ . '/Domain/Reports/OperationalMetrics.php';
 require_once __DIR__ . '/Domain/Import/SourceTable.php';
 require_once __DIR__ . '/Domain/Import/ColumnMap.php';
 require_once __DIR__ . '/Domain/Import/EntitySpec.php';
+require_once __DIR__ . '/Domain/Query/FilterSpec.php';
+require_once __DIR__ . '/Domain/Query/FilterSql.php';
+require_once __DIR__ . '/Domain/Query/Watchlists.php';
+require_once __DIR__ . '/Domain/Query/Csv.php';
+require_once __DIR__ . '/Repo/FacetOptions.php';
 require_once __DIR__ . '/Repo/ScopeGrantRepo.php';
 require_once __DIR__ . '/Repo/ScopeGateway.php';
 require_once __DIR__ . '/Repo/EmployeeRepo.php';
@@ -48,6 +54,7 @@ require_once __DIR__ . '/Repo/AttachmentRepo.php';
 require_once __DIR__ . '/Repo/SuspensionRepo.php';
 require_once __DIR__ . '/Repo/PrintLogRepo.php';
 require_once __DIR__ . '/Repo/ImportRepo.php';
+require_once __DIR__ . '/Repo/ErrorLogRepo.php';
 
 require_once __DIR__ . '/Settings.php';
 require_once __DIR__ . '/Access.php';
@@ -62,3 +69,10 @@ require_once __DIR__ . '/Attachments.php';
 require_once __DIR__ . '/PreAudit.php';
 require_once __DIR__ . '/Reports.php';
 require_once __DIR__ . '/PrintDoc.php';
+require_once __DIR__ . '/ErrorLog.php';
+
+// Last, once ErrorLogRepo is loaded: everything from here on that throws
+// uncaught, or fatals outright, has somewhere to go other than a server log
+// file nobody is watching. See ErrorLog.php's own docblock for what this
+// does and does not cover.
+installErrorHandlers();

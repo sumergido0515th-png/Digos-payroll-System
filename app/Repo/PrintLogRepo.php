@@ -58,6 +58,32 @@ final class PrintLogRepo
     }
 
     /**
+     * Official prints in the caller's scope, optionally bounded by
+     * PrintedAt - the raw material for
+     * Digos\Domain\Reports\OperationalMetrics::printActivity(), which does
+     * the reprint-rate and pages-printed arithmetic. Draft/preview prints
+     * are excluded here the same way hasOfficialPrint() excludes them from
+     * the reprint-reason trigger - a preview is not a reprint of anything.
+     *
+     * @return array<int, array{PayrollNo: string, Form: string, PrintedAt: string}>
+     */
+    public static function officialPrintsScoped(array $user, ?string $from, ?string $to): array
+    {
+        $scope = ScopeGateway::where($user, 'Payroll', 'h.');
+        $clauses = [$scope['sql'], 'l.IsOfficial = 1'];
+        $params = $scope['params'];
+
+        if ($from !== null) { $clauses[] = 'l.PrintedAt >= ?'; $params[] = $from; }
+        if ($to !== null) { $clauses[] = 'l.PrintedAt < ? + INTERVAL 1 DAY'; $params[] = $to; }
+
+        return DB::rows(
+            'SELECT l.PayrollNo, l.Form, l.PrintedAt
+               FROM PrintLog l JOIN Payroll h ON h.PayrollNo = l.PayrollNo
+              WHERE ' . implode(' AND ', $clauses),
+            $params);
+    }
+
+    /**
      * A payroll's print history, newest first - the Certification cover sheet
      * and the pre-auditor's own review both want to show it.
      *

@@ -78,11 +78,33 @@ function esc(mixed $s): string
     return htmlspecialchars((string)($s ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-/** Generates a short collision-resistant id, e.g. "EMP-LQ2K8F-482". */
+/**
+ * Generates a short, time-sortable id, e.g. "EMP-LQ2K8F-482-1".
+ *
+ * The millisecond + random suffix alone left a real collision window: two
+ * ids minted in the same millisecond differed only by a draw from 900
+ * values, and a bulk import writing many rows in a tight loop hit exactly
+ * that - intermittently, surfacing as `Duplicate entry ... for key
+ * 'PRIMARY'`, a message that names a primary key the caller never chose and
+ * cannot act on.
+ *
+ * A `static` counter closes it deterministically for the case that actually
+ * happens: every id newId() mints within one request or CLI run is unique
+ * regardless of clock or random-draw collisions, because the counter itself
+ * never repeats within it - PHP resets `static` locals at the start of each
+ * new request, so this is a per-request sequence, not a global one. Two
+ * different requests minting in the same millisecond still rely on the
+ * random draw, exactly as before; that cross-process collision has never
+ * been observed and is not the one this fixes.
+ */
 function newId(string $prefix): string
 {
+    static $sequence = 0;
+    $sequence++;
+
     return $prefix . '-' . strtoupper(base_convert((string) (int) (microtime(true) * 1000), 10, 36))
-        . '-' . random_int(100, 999);
+        . '-' . random_int(100, 999)
+        . '-' . strtoupper(base_convert((string) $sequence, 10, 36));
 }
 
 /**

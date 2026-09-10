@@ -117,6 +117,32 @@ final class SourceTree
     }
 
     /**
+     * Parses the EXPORTABLE table out of public/export.php as text, for the
+     * same reason routes() parses ROUTES rather than requiring api.php: that
+     * file has top-level side effects the moment it is included.
+     *
+     * @return array<string, array{action: string, permission: string}>
+     */
+    public static function exportable(): array
+    {
+        $src = self::read('public/export.php');
+
+        if (!preg_match('/const\s+EXPORTABLE\s*=\s*\[(.*?)\n\];/s', $src, $block)) {
+            throw new \RuntimeException('Could not locate the EXPORTABLE table in public/export.php.');
+        }
+
+        preg_match_all(
+            "/'(?<entity>\w+)'\s*=>\s*\[\s*'(?<action>api\w+)'\s*,\s*'(?<perm>[^']*)'\s*\]/",
+            $block[1], $matches, PREG_SET_ORDER);
+
+        $exportable = [];
+        foreach ($matches as $m) {
+            $exportable[$m['entity']] = ['action' => $m['action'], 'permission' => $m['perm']];
+        }
+        return $exportable;
+    }
+
+    /**
      * Every function whose name begins with "api", mapped to the file that
      * declares it. These are the application's endpoints.
      *

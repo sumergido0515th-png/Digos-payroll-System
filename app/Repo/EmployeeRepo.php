@@ -20,6 +20,8 @@ declare(strict_types=1);
 namespace Digos\Repo;
 
 use DB;
+use Digos\Domain\Query\FilterSpec;
+use Digos\Domain\Query\FilterSql;
 
 final class EmployeeRepo
 {
@@ -40,21 +42,10 @@ final class EmployeeRepo
         'SSSDeductionApproved', 'BIRTaxPercent',
     ];
 
-    /**
-     * Tier 1 columns that may be searched by anyone.
-     *
-     * TIN and CashCard used to be in this list. They are Tier 2, so searching
-     * them is itself a disclosure - "does any employee have TIN X?" is
-     * answerable from a hit count alone, without the column ever being
-     * displayed. They move to SENSITIVE_SEARCH_FIELDS below.
-     */
-    private const SEARCH_FIELDS = [
-        'EmployeeID', 'EmployeeNo', 'LastName', 'FirstName', 'MiddleName',
-        'Position', 'Department', 'OfficeCode',
-    ];
-
-    /** Searchable only by a caller entitled to the restricted tier. */
-    private const SENSITIVE_SEARCH_FIELDS = ['TIN', 'CashCard', 'Email'];
+    // The two search-column lists moved to FilterSpec in 9B, as the
+    // 'Employees' and 'EmployeesSensitive' facet maps. Which of the two this
+    // repository asks for is still decided here, in search(), because that is
+    // the permission question and FilterSpec never sees $user.
 
     /**
      * Employees this user may see, filtered and searched.
@@ -63,36 +54,63 @@ final class EmployeeRepo
      * @param array<string, mixed> $filters the API payload
      * @return array<int, array<string, mixed>>
      */
-    public static function listScoped(array $user, array $filters, bool $withSensitive = false): array
+    public static function search(array $user, array $payload, bool $withSensitive = false): array
     {
         $scope = ScopeGateway::where($user, 'Employees', 'e.');
 
-        $sql = 'SELECT ' . self::selectList($withSensitive)
-            . ' FROM Employees e'
-            . ($withSensitive ? ' LEFT JOIN EmployeeSensitive s ON s.EmployeeID = e.EmployeeID' : '')
-            . ' WHERE ' . $scope['sql'];
-        $params = $scope['params'];
+        // The entity name is the whole of the sensitive-tier decision here.
+        // EmployeesSensitive differs from Employees only in the columns its
+        // search box reaches, because searching a column is a way of reading
+        // it - a caller could confirm a TIN by typing it and seeing whether a
+        // row comes back. FilterSpec never sees $user, so the permission stays
+        // in this layer with the other permissions.
+        $spec = FilterSpec::fromPayload(
+            $withSensitive ? 'EmployeesSensitive' : 'Employees', $payload);
+        $filter = FilterSql::build($spec, 'e.');
 
-        foreach (['OfficeCode', 'Department', 'EmploymentType', 'Status'] as $f) {
-            if (!empty($filters[$f])) { $sql .= " AND e.`$f` = ?"; $params[] = $filters[$f]; }
-        }
-        if (!empty($filters['Function'])) {
-            $sql .= ' AND e.FunctionName = ?';
-            $params[] = $filters['Function'];
-        }
+        return DB::rows(
+            'SELECT ' . self::selectList($withSensitive)
+            . ' FROM ' . self::from($withSensitive)
+            . ' WHERE ' . $scope['sql'] . ' AND ' . $filter['sql']
+            . ' ORDER BY ' . FilterSql::orderBy($spec, 'e.'),
+            array_merge($scope['params'], $filter['params']));
+    }
 
-        if (!empty($filters['search'])) {
-            $fields = array_map(fn($f) => "e.`$f`", self::SEARCH_FIELDS);
-            if ($withSensitive) {
-                foreach (self::SENSITIVE_SEARCH_FIELDS as $f) $fields[] = "s.`$f`";
-            }
-            $sql .= ' AND (' . implode(' OR ', array_map(fn($f) => "$f LIKE ?", $fields)) . ')';
-            foreach ($fields as $ignored) $params[] = '%' . $filters['search'] . '%';
-        }
+    /**
+     * The choices each employee dropdown may offer, built from rows in scope.
+     *
+     * Always the non-sensitive spec: none of the option facets is a restricted
+     * column, and a dropdown of every TIN in the office would be a disclosure
+     * whatever the caller may search.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public static function facetOptionsScoped(array $user): array
+    {
+        return FacetOptions::build(
+            'Employees', self::from(false), ScopeGateway::where($user, 'Employees', 'e.'), 'e.');
+    }
 
-        $sql .= ' ORDER BY e.LastName, e.FirstName';
+    /**
+     * The FROM body, with the restricted tier joined only when it is readable.
+     *
+     * Shared by the list and the facet options so the two cannot come to be
+     * built over different row sets.
+     */
+    private static function from(bool $withSensitive): string
+    {
+        return 'Employees e'
+            . ($withSensitive ? ' LEFT JOIN EmployeeSensitive s ON s.EmployeeID = e.EmployeeID' : '');
+    }
 
-        return DB::rows($sql, $params);
+    /**
+     * Employees this user may see.
+     *
+     * Kept as the name the modules already call; it is search().
+     */
+    public static function listScoped(array $user, array $filters, bool $withSensitive = false): array
+    {
+        return self::search($user, $filters, $withSensitive);
     }
 
     /** One employee, or null when it does not exist or is out of scope. */
