@@ -110,6 +110,17 @@
           </table>
         </div>
 
+        <!-- Shown when a recompute fails. The figures in the grid are a
+             preview; apiSavePayroll recomputes server-side, so what is stored
+             stays correct - but this screen exists for the preparer to review
+             the amounts before submitting, and reviewing stale ones is the
+             failure this warns about. -->
+        <div id="pr-compute-stale" class="pr-compute-stale" hidden>
+          These figures are out of date: the last recalculation did not finish.
+          Edit a value to try again. Saving now stores the recalculated amounts,
+          which may differ from what is shown here.
+        </div>
+
         <div class="text-end mt-3">
           <button class="btn btn-gov" id="pr-save">
             <span class="material-icons">save</span> Save Payroll</button>
@@ -281,8 +292,22 @@ Pages.payroll = (function () {
         if (taxInput.value === '') taxInput.placeholder = fmtMoney(c.Tax);
       });
       renderTotals(d.totals);
-    }).catch(function () { });
+      setComputeStale(false);
+    }).catch(function () {
+      // Deliberately not a toast: this runs on every keystroke, so a failing
+      // server would bury the screen in them. It used to be an empty catch,
+      // which is how the grid came to show a ten-day gross beside a three-day
+      // entry with nothing said at all. Marking the figures is the quiet
+      // equivalent - it stays until a recompute succeeds.
+      setComputeStale(true);
+    });
   }, 600);
+
+  /** Marks the previewed figures as not current. Cleared by the next success. */
+  function setComputeStale(stale) {
+    document.getElementById('pr-compute-stale').hidden = !stale;
+    document.getElementById('pr-edit-view').classList.toggle('compute-stale', stale);
+  }
 
   function renderTotals(t) {
     document.getElementById('tot-gross').textContent = fmtMoney(t.gross);

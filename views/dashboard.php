@@ -241,6 +241,13 @@ Pages.dashboard = (function () {
           '<td class="text-end text-money">' + fmtMoney(r.TotalGross) + '</td>' +
           '<td class="text-end text-money">' + fmtMoney(r.TotalNet) + '</td></tr>';
       }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No payroll data yet.</td></tr>';
+    }).catch(function () {
+      // Silent, like the watchlists above, so a failure does not toast on
+      // every dashboard visit - but it has to say something in the panel.
+      // Without this the table kept whatever it was already showing, which on
+      // a citywide total means last visit's figures presented as this one's.
+      document.getElementById('dash-citywide-rows').innerHTML =
+        '<tr><td colspan="4" class="text-center text-muted py-3">Unavailable.</td></tr>';
     });
   }
 
