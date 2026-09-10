@@ -69,6 +69,17 @@ require_once __DIR__ . '/Attachments.php';
 require_once __DIR__ . '/PreAudit.php';
 require_once __DIR__ . '/Reports.php';
 require_once __DIR__ . '/PrintDoc.php';
+// The seven form renderers PrintDoc.php's buildFormHtml() dispatches to -
+// split out of what was a single 1374-line file. Load order among these
+// seven does not matter to each other; all of them must load after
+// PrintDoc.php, which defines the shared helpers every one of them calls.
+require_once __DIR__ . '/PrintForms/PayrollForm.php';
+require_once __DIR__ . '/PrintForms/PagibigForm.php';
+require_once __DIR__ . '/PrintForms/SummaryForm.php';
+require_once __DIR__ . '/PrintForms/CafoaForm.php';
+require_once __DIR__ . '/PrintForms/Certification.php';
+require_once __DIR__ . '/PrintForms/NoticeOfSuspension.php';
+require_once __DIR__ . '/PrintForms/SettlementReport.php';
 require_once __DIR__ . '/ErrorLog.php';
 
 // Last, once ErrorLogRepo is loaded: everything from here on that throws

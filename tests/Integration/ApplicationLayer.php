@@ -106,6 +106,16 @@ final class ApplicationLayer
             // effect of an unrelated test's load order, and failed the moment
             // the file was run on its own.
             'app/PrintDoc.php',
+            // The seven form renderers PrintDoc.php's buildFormHtml()
+            // dispatches to, split out of what was a single 1374-line file -
+            // see PrintDoc.php's own header. Must load after it.
+            'app/PrintForms/PayrollForm.php',
+            'app/PrintForms/PagibigForm.php',
+            'app/PrintForms/SummaryForm.php',
+            'app/PrintForms/CafoaForm.php',
+            'app/PrintForms/Certification.php',
+            'app/PrintForms/NoticeOfSuspension.php',
+            'app/PrintForms/SettlementReport.php',
             'app/ErrorLog.php',
         ] as $file) {
             require_once PROJECT_ROOT . '/' . $file;
