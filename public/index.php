@@ -125,6 +125,10 @@ if (empty($_SESSION['email'])) {
         include dirname(__DIR__) . '/views/reports.php';
         include dirname(__DIR__) . '/views/print.php';
         include dirname(__DIR__) . '/views/settings.php';
+        include dirname(__DIR__) . '/views/users.php';
+        include dirname(__DIR__) . '/views/logs.php';
+        include dirname(__DIR__) . '/views/backup.php';
+        include dirname(__DIR__) . '/views/import.php';
       ?>
     </main>
   </div>
