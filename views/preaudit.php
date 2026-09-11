@@ -133,6 +133,12 @@ Pages.preaudit = (function () {
     var canAct = can('payroll.approve') && row.Status === 'FOR_PRE_AUDIT';
     var canSuspend = can('payroll.suspend') && (row.Status === 'FOR_PRE_AUDIT' || row.Status === 'PRE_AUDIT_APPROVED');
 
+    // Narrower than canSuspend on purpose: PayrollWorkflow::FLOW reaches
+    // RETURNED_TO_PREPARER from FOR_PRE_AUDIT and from nowhere else, so
+    // offering it on an approved payroll would be a button whose only
+    // outcome is the transition guard's refusal.
+    var canReturn = can('payroll.suspend') && row.Status === 'FOR_PRE_AUDIT';
+
     openModal('Payroll ' + row.PayrollNo + ' - ' + row.Status,
       '<p class="small text-muted mb-1">' + esc(row.OfficeCode) + ' &middot; ' + esc(row.PeriodID) +
       ' &middot; prepared by ' + esc(row.PreparedBy) + '</p>' +
@@ -141,6 +147,8 @@ Pages.preaudit = (function () {
       suspensionsHtml,
       [
         { label: 'Close', cls: 'btn-outline-secondary', onclick: closeModal },
+        canReturn ? { label: 'Return', cls: 'btn-outline-danger',
+          onclick: function () { closeModal(); returnForm(row.PayrollNo); } } : null,
         canSuspend ? { label: 'Suspend', cls: 'btn-warning',
           onclick: function () { closeModal(); suspendForm(row.PayrollNo); } } : null,
         canAct ? { label: 'Approve', cls: 'btn-success',
@@ -234,6 +242,53 @@ Pages.preaudit = (function () {
       ]);
   }
 
+  /* -------------------------------------------------------------- return */
+
+  /**
+   * FOR_PRE_AUDIT -> RETURNED_TO_PREPARER, the reject verb that raises no
+   * formal Notice of Suspension.
+   *
+   * The state, the transition and `apiReturnPayroll` have all existed since
+   * Phase 7, and the Payroll screen already offers edit and re-submit on a
+   * returned payroll - so the round trip was complete except for the one
+   * button that starts it, and the state was unreachable from the UI.
+   *
+   * It is a different act from Suspend, not a softer one: a suspension is a
+   * formal finding with a control number, a deadline and a printed NS form,
+   * and settling it is what sends the payroll back. A return says "this is
+   * not ready to review" and hands it straight back with the reason, which is
+   * why the endpoint requires Remarks and appends them to the payroll rather
+   * than creating a record of its own.
+   */
+  function returnForm(payrollNo) {
+    openModal('Return payroll ' + payrollNo + ' to its preparer',
+      '<p class="small text-muted">No Notice of Suspension is raised. The payroll becomes ' +
+        'editable again and the preparer re-submits it. Use Suspend instead when the finding ' +
+        'needs a control number and a deadline.</p>' +
+      '<div><label class="form-label">Reason</label>' +
+        '<textarea class="form-control form-control-sm" id="pa-return-remarks" rows="3" ' +
+        'placeholder="What the preparer has to fix before re-submitting."></textarea>' +
+        '<div class="form-text">Appended to the payroll\'s remarks, under your name.</div></div>',
+      [
+        { label: 'Cancel', cls: 'btn-outline-secondary', onclick: closeModal },
+        { label: 'Return to preparer', cls: 'btn-danger', onclick: function () {
+          var remarks = document.getElementById('pa-return-remarks').value;
+          // Checked here as well as on the server because the server's refusal
+          // would be "Missing field: Remarks" - true, and no use to a
+          // pre-auditor looking at a box they left empty.
+          if (!remarks.trim()) {
+            toast('A reason is needed - it is what the preparer acts on.', 'warning');
+            return;
+          }
+          busy(api('apiReturnPayroll', { PayrollNo: payrollNo, Remarks: remarks })).then(function () {
+            closeModalSaved();
+            toast('Payroll ' + payrollNo + ' returned to its preparer.', 'warning');
+            load();
+          });
+        } }
+      ]);
+  }
+
   /* -------------------------------------------------------------- settle */
 
   function settleForm(nsNo) {
@@ -264,7 +319,8 @@ Pages.preaudit = (function () {
   return {
     init: function () { load(); },
     open: open,
-    settleForm: settleForm
+    settleForm: settleForm,
+    returnForm: returnForm
   };
 })();
 </script>
