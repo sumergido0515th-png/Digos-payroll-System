@@ -47,6 +47,9 @@ final class DeleteGuardTest extends TestCase
     private const CHILD_DEPT = 'ZZGUARD-CHI';
     private const EMPTY_PERIOD = 'PRD-ZZGUARD-EMPTY';
     private const ACTOR = 'zzguard.actor@example.test';
+    private const SOLE_ADMIN = 'zzguard-sole-admin@example.test';
+    private const ADMIN_A = 'zzguard-admin-a@example.test';
+    private const ADMIN_B = 'zzguard-admin-b@example.test';
 
     protected function setUp(): void
     {
@@ -104,7 +107,13 @@ final class DeleteGuardTest extends TestCase
         $db->prepare('DELETE FROM Functions WHERE FunctionCode = ?')->execute([self::FUNC]);
         // Last: Users is SET NULL from Payroll, so the payroll rows above have
         // to be gone before this is a clean removal rather than a blanking.
-        $db->prepare('DELETE FROM Users WHERE Email = ?')->execute([self::ACTOR]);
+        $db->prepare('DELETE FROM Users WHERE Email IN (?, ?, ?, ?)')
+            ->execute([self::ACTOR, self::SOLE_ADMIN, self::ADMIN_A, self::ADMIN_B]);
+        // The seeded admin@digos.gov.ph is deactivated by
+        // testTheLastActiveAdminCannotBeDeleted to make it the account under
+        // test elsewhere in the suite - restored unconditionally, since this
+        // runs whether or not that test actually reached this point.
+        $db->exec("UPDATE Users SET Status = 'Active' WHERE Email = 'admin@digos.gov.ph'");
     }
 
     /** A separate employee with live rate and timekeeping history. */
@@ -321,6 +330,61 @@ final class DeleteGuardTest extends TestCase
         $this->assertSame(1, $result['deleted'],
             'An account that has prepared, approved, printed and granted nothing should still '
             . 'be removable - otherwise a mis-keyed address can never be cleaned up.');
+    }
+
+    /**
+     * apiDeleteUser's own docblock has promised "last-admin is protected"
+     * since it was written. Migration 0016 remapped the seed role name
+     * 'Administrator' to 'Admin' the day the current seven roles were
+     * adopted - a forward-only migration every real database has run - and
+     * this guard kept checking for 'Administrator', which no row can hold
+     * afterward. The promise was false on every system that has ever run
+     * 0016, which is all of them: deleting the sole remaining Admin
+     * succeeded silently, leaving nobody able to reach Users, Settings or
+     * Backup ever again. Found live while checking the deployment doc's
+     * seed-admin claims against a freshly migrated database.
+     */
+    public function testTheLastActiveAdminCannotBeDeleted(): void
+    {
+        $db = TestDatabase::connect();
+        // The seed admin@digos.gov.ph is Active in every migrated database
+        // (0001 seeds it, 0016 remaps its role, neither deactivates it), so
+        // "the only active Admin" has to mean stepping it aside first rather
+        // than assuming a fresh install has none.
+        $db->exec("UPDATE Users SET Status = 'Inactive' WHERE Email = 'admin@digos.gov.ph'");
+        $db->prepare('INSERT INTO Users (Email, FullName, Role, Status, PasswordHash)
+                      VALUES (?, ?, ?, ?, ?)')
+            ->execute([self::SOLE_ADMIN, 'Sole Admin', 'Admin', 'Active', 'x']);
+
+        $message = $this->refusalMessageFrom(fn() => apiDeleteUser(
+            ['Email' => self::SOLE_ADMIN],
+            ['Email' => 'someone.else@example.test']));
+
+        $this->assertNotNull($message, 'Deleting the only active Admin should have been refused.');
+        $this->assertStringContainsString('last active administrator', $message);
+
+        $this->assertSame('Active',
+            $db->query("SELECT Status FROM Users WHERE Email = '" . self::SOLE_ADMIN . "'")
+                ->fetchColumn(),
+            'The sole admin account was removed despite the refusal.');
+    }
+
+    /** The guard counts, rather than blocking every Admin deletion outright. */
+    public function testAnAdminCanBeDeletedWhileAnotherRemainsActive(): void
+    {
+        TestDatabase::connect()
+            ->prepare('INSERT INTO Users (Email, FullName, Role, Status, PasswordHash)
+                      VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)')
+            ->execute([
+                self::ADMIN_A, 'Admin A', 'Admin', 'Active', 'x',
+                self::ADMIN_B, 'Admin B', 'Admin', 'Active', 'x',
+            ]);
+
+        // admin@digos.gov.ph is Active too here, so this is 3 active admins
+        // deleting down to 2 - the ordinary case the guard must not block.
+        $result = apiDeleteUser(['Email' => self::ADMIN_A], ['Email' => self::ADMIN_B]);
+
+        $this->assertSame(1, $result['deleted']);
     }
 
     public function testDeletingAnOfficeWithPayrollHistoryIsRefusedInPlainWords(): void

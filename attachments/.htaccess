@@ -1,0 +1,25 @@
+# Attachments are payroll justifications - scanned memoranda, medical
+# certificates - uploaded through the Coverage & Attachments screen. See
+# app/Attachments.php's own header: "a guessable URL under public/ would
+# serve them to anyone who asked."
+#
+# That comment assumes this directory sits outside the web root, which is
+# true for a normal deployment and FALSE for shared hosting (InfinityFree and
+# similar), where everything must live under htdocs/ and this file is the
+# only thing standing between the internet and every document in it.
+#
+# There is deliberately no authenticated download path to replace this with -
+# apiGetAttachment returns metadata only, and no download.php-style endpoint
+# reads the file bytes back (see the Backlog and RouteTableTest's own note on
+# apiGetAttachment). Until one exists, this .htaccess is the entire
+# protection an uploaded file has.
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+
+Options -Indexes

@@ -18,6 +18,7 @@
  *       views/           .htaccess: deny
  *       migrations/      .htaccess: deny
  *       backups/         .htaccess: deny  <- dumps of every employee record
+ *       attachments/     .htaccess: deny  <- uploaded scans, medical certs
  *       public/          the only directory meant to be reachable
  *
  * This needs no code change and no write access above htdocs.
@@ -80,13 +81,23 @@ function build(string $out): int
         say(sprintf('  %-14s copied', $dir . '/'));
     }
 
-    // backups/ ships as an empty, protected directory. Its contents are the
-    // single most sensitive artefact the system produces and must never be
-    // part of a package that gets emailed or uploaded.
-    mkdir($out . '/backups', 0775, true);
-    copy(PROJECT . '/backups/.htaccess', $out . '/backups/.htaccess');
-    file_put_contents($out . '/backups/.gitkeep', '');
-    say('  backups/       created empty (protected)');
+    // backups/ and attachments/ both ship as empty, protected directories
+    // rather than through SHIP - their CONTENTS must never be part of a
+    // package that gets emailed or uploaded (a database dump; somebody's
+    // scanned medical certificate), but the empty, .htaccess-protected
+    // directory itself has to exist on the server before the app's first
+    // write to it, on a host where AllowOverride is the only protection
+    // there is. attachments/ joined this list on 2026-09-11: app/config.php's
+    // ATTACHMENT_DIR auto-creates the directory on first upload with no
+    // .htaccess of its own, which is exactly the InfinityFree-shaped hole
+    // backups/ was already built to avoid - found while verifying this
+    // script's own output against the deployment doc's claims.
+    foreach (['backups', 'attachments'] as $protectedDir) {
+        mkdir("$out/$protectedDir", 0775, true);
+        copy(PROJECT . "/$protectedDir/.htaccess", "$out/$protectedDir/.htaccess");
+        file_put_contents("$out/$protectedDir/.gitkeep", '');
+        say(sprintf('  %-14s created empty (protected)', "$protectedDir/"));
+    }
 
     writeRootHtaccess($out);
     writeConfigTemplate($out);
@@ -318,8 +329,8 @@ function dropOrder(array $tables, array $edges): array
 function writeRootHtaccess(string $out): void
 {
     $htaccess = <<<APACHE
-    # Serve the site from public/ while keeping app/, views/ and backups/
-    # outside anything the web server will hand out.
+    # Serve the site from public/ while keeping app/, views/, backups/ and
+    # attachments/ outside anything the web server will hand out.
     #
     # Without this the site still works at https://<host>/public/ - the rewrite
     # only removes that prefix from the URL.
@@ -428,7 +439,7 @@ function audit(string $out): void
     }
 
     // Every directory that is not public/ must carry a deny rule.
-    foreach (['app', 'views', 'migrations', 'backups'] as $dir) {
+    foreach (['app', 'views', 'migrations', 'backups', 'attachments'] as $dir) {
         if (!is_file("$out/$dir/.htaccess")) {
             $problems[] = "$dir/ has no .htaccess - it would be served over HTTP";
         }

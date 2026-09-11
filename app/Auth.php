@@ -313,10 +313,19 @@ function apiDeleteUser(array $p, array $user): array
     requireFields($p, ['Email']);
     if ($p['Email'] === $user['Email']) throw new RuntimeException('You cannot delete your own account.');
 
+    // 'Administrator' until here was the pre-Phase-2 role name; migration 0016
+    // remapped every existing row to 'Admin' the day the seven current roles
+    // were adopted, and nothing has written 'Administrator' to this column
+    // since. That made this guard's WHERE clause unsatisfiable on any system
+    // that has run 0016 - which is every system, since it is a forward-only
+    // migration everyone applies - so the docblock's "last-admin is
+    // protected" promise was false from that day on: deleting the sole
+    // remaining Admin succeeded silently. Found while checking the
+    // deployment doc's seed-admin claims against a freshly migrated database.
     $target = DB::row('SELECT Role FROM Users WHERE Email = ?', [$p['Email']]);
-    if ($target && $target['Role'] === 'Administrator') {
+    if ($target && $target['Role'] === 'Admin') {
         $admins = (int) DB::scalar(
-            "SELECT COUNT(*) FROM Users WHERE Role = 'Administrator' AND Status = 'Active'");
+            "SELECT COUNT(*) FROM Users WHERE Role = 'Admin' AND Status = 'Active'");
         if ($admins <= 1) throw new RuntimeException('Cannot delete the last active administrator.');
     }
 

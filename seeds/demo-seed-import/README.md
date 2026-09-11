@@ -1,7 +1,7 @@
 # Demo seed, as importable files
 
 The same synthetic data as [`../demo-seed.sql`](../demo-seed.sql), in the format the
-**Settings → Import Data** screen reads. Everything the warning at the top of that file
+**Import Data** screen reads. Everything the warning at the top of that file
 says applies here unchanged: **none of this is real personnel.** Every identifier is in an
 impossible range (TIN/GSIS/PhilHealth/Pag-IBIG/cash card all begin `9000…`) and every
 address is `example.invalid`, which can never receive mail.

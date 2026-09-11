@@ -26,3 +26,4 @@ Desktop.ini
 # installation's own data and never belong in the repository.
 attachments/*
 !attachments/.gitkeep
+!attachments/.htaccess

@@ -107,7 +107,7 @@ served as plain files, so a deployment is a file copy and a database migration.
    project to `C:\xampp\htdocs\digos-payroll\` and browse to
    `http://localhost/digos-payroll/public/`. This works because XAMPP's
    htdocs has `AllowOverride All`, so the bundled `.htaccess` files return
-   **403** for `app/` and `backups/` (confirmed on Apache 2.4 + PHP 8.1).
+   **403** for `app/`, `backups/` and `attachments/` (confirmed on Apache 2.4 + PHP 8.1).
    Prefer the vhost setup for production; htdocs is fine for a LAN pilot.
 
 6. **Sign in:** `admin@digos.gov.ph` / `ChangeMe!123` — then immediately go to
@@ -120,11 +120,12 @@ served as plain files, so a deployment is a file copy and a database migration.
 
    | Step | Where | What to set |
    | --- | --- | --- |
-   | 1 | **Settings** | Signatories (prepared/certified/approved by), agency header, rates and deduction defaults, backup schedule |
+   | 1 | **Settings** | Signatories (prepared/certified/approved by), agency header, rates and deduction defaults |
    | 2 | **Offices** | The office and department tree, and the function codes payroll charges against |
    | 3 | **Users** | One account per timekeeper/approver, with the role and office scope each may see |
    | 4 | **Employees** | Personnel records, contracts, and rates |
    | 5 | **Periods** | The payroll period to work in — nothing can be computed until one exists |
+   | 6 | **Backup & Restore** | The automatic-backup schedule (off/daily/weekly) |
 
    Roles and what each may do: [`docs/ROLES.md`](docs/ROLES.md).
 
@@ -191,9 +192,9 @@ Roadmap and conventions: [`docs/PHASE_PLAN.md`](docs/PHASE_PLAN.md),
 
 - All queries are prepared statements; all output is escaped client-side
   (`esc()`), server-rendered pages use `htmlspecialchars`.
-- `app/`, `views/`, `migrations/` and `backups/` ship with `Require all denied`
-  .htaccess files as a second line of defense, but keeping the docroot on
-  `public/` is the real fix.
+- `app/`, `views/`, `migrations/`, `backups/` and `attachments/` ship with
+  `Require all denied` .htaccess files as a second line of defense, but
+  keeping the docroot on `public/` is the real fix.
 - Sessions are HttpOnly + SameSite=Lax. The `secure` cookie flag is set
   automatically once the request arrives over HTTPS, including behind a
   reverse proxy — see `requestIsHttps()` in `app/config.php`. No configuration
