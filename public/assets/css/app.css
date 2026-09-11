@@ -260,6 +260,20 @@ body.sidebar-hidden #main { margin-left: 0; }
 #grid-table td { padding: 4px 6px; }
 .grid-total-row td { font-weight: 700; background: var(--gov-blue-light); }
 
+/* Shown when a server-side recompute failed, so the previewed amounts are no
+   longer the ones a save would store. Amber rather than red: nothing is wrong
+   with the payroll, the screen is just behind. */
+.pr-compute-stale {
+  margin-top: 12px; padding: 8px 12px; border-radius: 6px;
+  border: 1px solid #f0b429; background: #fdf6e3; color: #7a4f01;
+  font-size: 13px;
+}
+[data-theme="dark"] .pr-compute-stale {
+  border-color: #7a5b12; background: #2a2312; color: #f0cd80;
+}
+/* The figures themselves read as provisional while it is showing. */
+#pr-edit-view.compute-stale .text-money { opacity: .55; }
+
 /* ---- misc -------------------------------------------------------------- */
 .page { display: none; animation: fadeIn .2s ease; }
 .page.active { display: block; }

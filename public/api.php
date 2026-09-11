@@ -210,7 +210,17 @@ try {
     echo json_encode(ok($data));
 
 } catch (Throwable $e) {
-    if ($e instanceof RuntimeException) {
+    // PDOException is excluded explicitly because it *extends* RuntimeException
+    // in PHP, so the plain instanceof check below is true for every database
+    // error and handed the driver's own message straight back to the browser -
+    // "SQLSTATE[22001]: String data, right truncated: 1406 Data too long for
+    // column 'PayrollNo' at row 1", naming a column to whoever tripped it, and
+    // logged to ErrorLog not at all. That is the exact leak this branch was
+    // added to stop, and PDOException was named in its own commit message as a
+    // thing to catch; it was the one class that got past it. A driver message
+    // is never written for a timekeeper, so it belongs in the else branch with
+    // TypeError and the rest.
+    if ($e instanceof RuntimeException && !$e instanceof PDOException) {
         // The documented contract (CLAUDE.md > Conventions > Errors): thrown
         // on purpose, with a message written for a timekeeper. Safe to
         // return verbatim, exactly as before.

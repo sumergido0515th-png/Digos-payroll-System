@@ -67,18 +67,18 @@ Pages.print = (function () {
           '<td><a target="_blank" class="small" href="print.php?no=' +
             encodeURIComponent(r.PayrollNo) + '">Open print view</a></td>' +
           '<td class="text-end text-nowrap">' +
-          actionBtn('print', 'Pages.print.preview(\'' + r.PayrollNo + '\')') +
-          actionBtn('picture_as_pdf', 'Pages.print.pdf(\'' + r.PayrollNo + '\')') +
-          actionBtn('savings', 'Pages.print.form(\'' + r.PayrollNo + '\',\'pagibig\')') +
-          actionBtn('summarize', 'Pages.print.form(\'' + r.PayrollNo + '\',\'summary\')') +
-          actionBtn('fact_check', 'Pages.print.form(\'' + r.PayrollNo + '\',\'cafoa\')') +
+          actionBtn('print', 'Pages.print.preview', [r.PayrollNo]) +
+          actionBtn('picture_as_pdf', 'Pages.print.pdf', [r.PayrollNo]) +
+          actionBtn('savings', 'Pages.print.form', [r.PayrollNo, 'pagibig']) +
+          actionBtn('summarize', 'Pages.print.form', [r.PayrollNo, 'summary']) +
+          actionBtn('fact_check', 'Pages.print.form', [r.PayrollNo, 'cafoa']) +
           (OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
-            actionBtn('assignment_turned_in', 'Pages.print.form(\'' + r.PayrollNo + '\',\'certification\')') +
-            actionBtn('account_balance_wallet', 'Pages.print.form(\'' + r.PayrollNo + '\',\'settlement\')') : '') +
+            actionBtn('assignment_turned_in', 'Pages.print.form', [r.PayrollNo, 'certification']) +
+            actionBtn('account_balance_wallet', 'Pages.print.form', [r.PayrollNo, 'settlement']) : '') +
           (can('print.run') && OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
-            actionBtn('verified', 'Pages.print.official(\'' + r.PayrollNo + '\')', 'text-success') : '') +
+            actionBtn('verified', 'Pages.print.official', [r.PayrollNo], 'text-success') : '') +
           (can('payroll.release') && OFFICIAL_STATUSES.indexOf(r.Status) !== -1 ?
-            actionBtn('forward_to_inbox', 'Pages.print.email(\'' + r.PayrollNo + '\')') : '') +
+            actionBtn('forward_to_inbox', 'Pages.print.email', [r.PayrollNo]) : '') +
           '</td></tr>';
       }).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">' +
         (status ? 'No ' + esc(status) + ' payrolls found.'

@@ -152,7 +152,7 @@ Pages.coverage = (function () {
             '<td class="small">' + esc(fmtDate(a.UploadedAt)) + '</td>' +
             '<td class="text-end">' +
               (can('attachment.edit')
-                ? actionBtn('delete', 'Pages.coverage.remove(\'' + a.AttachmentID + '\')', 'text-danger')
+                ? actionBtn('delete', 'Pages.coverage.remove', [a.AttachmentID], 'text-danger')
                 : '') +
             '</td></tr>';
         }).join('') || '<tr><td colspan="7" class="text-center text-muted py-4">' +

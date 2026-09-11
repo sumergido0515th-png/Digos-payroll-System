@@ -220,8 +220,9 @@ Pages.dashboard = (function () {
         html += '<div class="text-muted small mb-1">+' + (rows.length - shown.length) + ' more</div>';
       }
       if (w.key !== 'suspension' || can('payroll.approve')) {
-        html += '<a href="#" class="small" onclick="event.preventDefault();goToPage(\'' + w.page + '\'' +
-          (w.tab ? ',{tab:\'' + w.tab + '\'}' : '') + ')">View all &raquo;</a>';
+        html += '<a href="#" class="small" onclick="event.preventDefault();' +
+          jsCall('goToPage', w.tab ? [w.page, { tab: w.tab }] : [w.page]) +
+          '">View all &raquo;</a>';
       }
       body.innerHTML = html;
     }).catch(function () { body.innerHTML = '<div class="text-muted small">Unavailable.</div>'; });
@@ -240,6 +241,13 @@ Pages.dashboard = (function () {
           '<td class="text-end text-money">' + fmtMoney(r.TotalGross) + '</td>' +
           '<td class="text-end text-money">' + fmtMoney(r.TotalNet) + '</td></tr>';
       }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No payroll data yet.</td></tr>';
+    }).catch(function () {
+      // Silent, like the watchlists above, so a failure does not toast on
+      // every dashboard visit - but it has to say something in the panel.
+      // Without this the table kept whatever it was already showing, which on
+      // a citywide total means last visit's figures presented as this one's.
+      document.getElementById('dash-citywide-rows').innerHTML =
+        '<tr><td colspan="4" class="text-center text-muted py-3">Unavailable.</td></tr>';
     });
   }
 

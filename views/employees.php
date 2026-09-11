@@ -98,8 +98,8 @@ Pages.employees = (function () {
             '<td class="text-money">' + fmtMoney(e.DailyRate) + '</td>' +
             '<td>' + badge(e.Status) + '</td>' +
             '<td class="text-end text-nowrap">' +
-            (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit(\'' + e.EmployeeID + '\')') : '') +
-            (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove(\'' + e.EmployeeID + '\')', 'text-danger') : '') +
+            (can('employee.edit') ? actionBtn('edit', 'Pages.employees.edit', [e.EmployeeID]) : '') +
+            (can('employee.delete') || can('*') ? actionBtn('delete', 'Pages.employees.remove', [e.EmployeeID], 'text-danger') : '') +
             '</td></tr>';
         }).join('') || '<tr><td colspan="9" class="text-center text-muted py-4">No employees found.</td></tr>';
       });

@@ -62,7 +62,7 @@ Pages.preaudit = (function () {
 
   function draw() {
     document.getElementById('pa-rows').innerHTML = rows.map(function (r) {
-      var acts = actionBtn('visibility', 'Pages.preaudit.open(\'' + r.PayrollNo + '\')');
+      var acts = actionBtn('visibility', 'Pages.preaudit.open', [r.PayrollNo]);
       return '<tr>' +
         '<td class="fw-semibold">' + esc(r.PayrollNo) + '</td>' +
         '<td>' + esc(r.PeriodID) + '</td><td>' + esc(r.OfficeCode) + '</td>' +
@@ -126,7 +126,7 @@ Pages.preaudit = (function () {
             ' <a class="small" target="_blank" href="print.php?no=' + encodeURIComponent(row.PayrollNo) +
             '&form=ns&ns=' + encodeURIComponent(s.NsNo) + '">Print NS</a>' +
             ' <button class="btn btn-sm btn-outline-secondary py-0 px-1" ' +
-            'onclick="Pages.preaudit.settleForm(\'' + s.NsNo + '\')">Settle</button></li>';
+            'onclick="' + jsCall('Pages.preaudit.settleForm', [s.NsNo]) + '">Settle</button></li>';
         }).join('') + '</ul></div>'
       : '';
 

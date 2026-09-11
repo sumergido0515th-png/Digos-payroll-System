@@ -33,8 +33,8 @@ Pages.periods = (function () {
             '<td>' + badge(r.Status) + '</td>' +
             '<td class="text-end text-nowrap">' +
             (can('period.edit') ?
-              actionBtn('edit', 'Pages.periods.edit(\'' + r.PeriodID + '\')') +
-              actionBtn('delete', 'Pages.periods.remove(\'' + r.PeriodID + '\')', 'text-danger') : '') +
+              actionBtn('edit', 'Pages.periods.edit', [r.PeriodID]) +
+              actionBtn('delete', 'Pages.periods.remove', [r.PeriodID], 'text-danger') : '') +
             '</td></tr>';
         }).join('') || '<tr><td colspan="6" class="text-center text-muted py-4">No payroll periods.</td></tr>';
       });
