@@ -37,19 +37,17 @@ final class FilterBarSpecTest extends TestCase
 {
     public function testEveryFacetOfferedIsAnOptionFacetOfThatEntity(): void
     {
-        $tabs = self::documentTabs();
-
-        foreach ($tabs as $tab => $cfg) {
+        foreach (self::screens() as $tab => $cfg) {
             if (!$cfg['facets']) continue;
 
             $this->assertNotSame('', $cfg['entity'],
-                "The '$tab' tab offers filter dropdowns but names no FilterSpec entity.");
+                "The '$tab' screen offers filter dropdowns but names no FilterSpec entity.");
 
             $known = array_keys(FilterSpec::optionColumns($cfg['entity']));
 
             foreach ($cfg['facets'] as $key) {
                 $this->assertContains($key, $known,
-                    "The '$tab' tab offers a '$key' dropdown, which is not an option facet of "
+                    "The '$tab' screen offers a '$key' dropdown, which is not an option facet of "
                     . "{$cfg['entity']}. An unknown filter key is IGNORED rather than refused, so "
                     . 'this renders an empty dropdown over an unfiltered list and never fails. '
                     . 'Known: ' . implode(', ', $known) . '.');
@@ -64,7 +62,7 @@ final class FilterBarSpecTest extends TestCase
      */
     public function testEverySortOfferedIsInThatEntitysSortAllowlist(): void
     {
-        foreach (self::documentTabs() as $tab => $cfg) {
+        foreach (self::screens() as $tab => $cfg) {
             if (!$cfg['sorts']) continue;
 
             foreach ($cfg['sorts'] as $key) {
@@ -89,18 +87,18 @@ final class FilterBarSpecTest extends TestCase
      */
     public function testEveryDateRangeNamesTwoRealDateFacets(): void
     {
-        foreach (self::documentTabs() as $tab => $cfg) {
+        foreach (self::screens() as $tab => $cfg) {
             foreach ($cfg['dates'] as $key) {
                 $conditions = FilterSpec::fromPayload($cfg['entity'], [$key => '2026-01-01'])
                     ->conditions();
 
                 $this->assertCount(1, $conditions,
-                    "The '$tab' tab offers a '$key' date box, which {$cfg['entity']} has no facet "
+                    "The '$tab' screen offers a '$key' date box, which {$cfg['entity']} has no facet "
                     . 'for. An unknown filter key is ignored, so this is a date the person typed '
                     . 'and the list never applied.');
 
                 $this->assertStringStartsWith('date', $conditions[0]['op'],
-                    "The '$tab' tab uses '$key' as a date box, but {$cfg['entity']} declares it "
+                    "The '$tab' screen uses '$key' as a date box, but {$cfg['entity']} declares it "
                     . "as '{$conditions[0]['op']}'.");
             }
         }
@@ -114,12 +112,58 @@ final class FilterBarSpecTest extends TestCase
      */
     public function testFacetEndpointAndFacetListTravelTogether(): void
     {
-        foreach (self::documentTabs() as $tab => $cfg) {
+        foreach (self::screens() as $tab => $cfg) {
             $this->assertSame($cfg['facetApi'] !== '', (bool) $cfg['facets'],
-                "The '$tab' tab declares " . ($cfg['facetApi'] !== ''
+                "The '$tab' screen declares " . ($cfg['facetApi'] !== ''
                     ? "facetApi '{$cfg['facetApi']}' but no facets to spend it on."
                     : 'facet dropdowns but no facetApi to fill them from.'));
         }
+    }
+
+    /**
+     * Every filter bar in the tree, keyed by the screen it belongs to.
+     *
+     * Two shapes, because the two screens are: Documents keeps five tabs in
+     * one TABS table, Suspensions is a page with three module-level arrays.
+     * A third filter bar added without being added here passes this file
+     * silently, which is why documentTabs() asserts its own count and why
+     * suspensionScreen() asserts every array it looked for was found.
+     *
+     * @return array<string, array{entity: string, facetApi: string,
+     *                             facets: string[], sorts: string[],
+     *                             dates: string[]}>
+     */
+    private static function screens(): array
+    {
+        return self::documentTabs() + ['suspensions' => self::suspensionScreen()];
+    }
+
+    /**
+     * views/suspensions.php's SORTS, FACETS and DATES.
+     *
+     * @return array{entity: string, facetApi: string, facets: string[],
+     *               sorts: string[], dates: string[]}
+     */
+    private static function suspensionScreen(): array
+    {
+        $source = SourceTree::read('views/suspensions.php');
+
+        $screen = [
+            'entity' => 'Suspensions',
+            'facetApi' => 'apiGetSuspensionFacets',
+            'facets' => self::pairKeys($source, 'var FACETS ='),
+            'sorts' => self::pairKeys($source, 'var SORTS ='),
+            'dates' => self::rangeKeys($source, 'var DATES ='),
+        ];
+
+        self::assertNotEmpty($screen['facets'], 'views/suspensions.php: FACETS did not parse.');
+        self::assertNotEmpty($screen['sorts'], 'views/suspensions.php: SORTS did not parse.');
+        self::assertNotEmpty($screen['dates'], 'views/suspensions.php: DATES did not parse.');
+
+        self::assertStringContainsString("api('apiGetSuspensionFacets'", $source,
+            'views/suspensions.php no longer calls the facet endpoint this guard assumes it does.');
+
+        return $screen;
     }
 
     /**
@@ -152,9 +196,9 @@ final class FilterBarSpecTest extends TestCase
             $tabs[$parts[$i]] = [
                 'entity' => self::scalar($body, 'entity'),
                 'facetApi' => self::scalar($body, 'facetApi'),
-                'facets' => self::pairKeys($body, 'facets'),
-                'sorts' => self::pairKeys($body, 'sorts'),
-                'dates' => self::rangeKeys($body),
+                'facets' => self::pairKeys($body, 'facets:'),
+                'sorts' => self::pairKeys($body, 'sorts:'),
+                'dates' => self::rangeKeys($body, 'dates:'),
             ];
         }
 
@@ -172,30 +216,30 @@ final class FilterBarSpecTest extends TestCase
     }
 
     /**
-     * `facets: [['Status', 'Status'], ['OfficeCode', 'Office']]` -> the first
+     * `<prefix> [['Status', 'Status'], ['OfficeCode', 'Office']]` -> the first
      * element of each pair, which is the key the payload carries. The second
      * is the visible label and is nobody's business but the reader's.
      *
      * @return string[]
      */
-    private static function pairKeys(string $body, string $key): array
+    private static function pairKeys(string $body, string $prefix): array
     {
-        if (!preg_match("/\b$key: \[(.*?)\]\],/s", $body, $m)) return [];
+        if (!preg_match('/' . preg_quote($prefix, '/') . ' \[(.*?)\]\]/s', $body, $m)) return [];
 
         preg_match_all("/\['([^']+)',/", $m[1] . ']', $pairs);
         return $pairs[1];
     }
 
     /**
-     * `dates: [['Issued', 'IssuedFrom', 'IssuedTo']]` -> both payload keys,
+     * `<prefix> [['Issued', 'IssuedFrom', 'IssuedTo']]` -> both payload keys,
      * flattened. The first element is the label the dropdown shows and is not
      * a key.
      *
      * @return string[]
      */
-    private static function rangeKeys(string $body): array
+    private static function rangeKeys(string $body, string $prefix): array
     {
-        if (!preg_match('/\bdates: \[(.*?)\]\],/s', $body, $m)) return [];
+        if (!preg_match('/' . preg_quote($prefix, '/') . ' \[(.*?)\]\]/s', $body, $m)) return [];
 
         preg_match_all("/\['[^']+', '([^']+)', '([^']+)'\]/", $m[1] . ']', $ranges);
         return array_merge($ranges[1], $ranges[2]);
