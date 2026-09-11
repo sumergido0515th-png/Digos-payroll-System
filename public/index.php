@@ -49,6 +49,7 @@ if (empty($_SESSION['email'])) {
       <a class="nav-item-link" data-page="preaudit" data-perm="payroll.approve"><span class="material-icons">fact_check</span>Pre-Audit Worklist</a>
       <a class="nav-item-link" data-page="suspensions" data-perm="payroll.view"><span class="material-icons">gavel</span>Suspensions</a>
       <a class="nav-item-link" data-page="periods" data-perm="period.view"><span class="material-icons">date_range</span>Payroll Period</a>
+      <a class="nav-item-link" data-page="holidays" data-perm="calendar.view"><span class="material-icons">event_available</span>Holiday Calendar</a>
       <a class="nav-item-link" data-page="reports" data-perm="report.view"><span class="material-icons">summarize</span>Payroll Reports</a>
       <a class="nav-item-link" data-page="print" data-perm="print.run"><span class="material-icons">print</span>Print Payroll</a>
 
@@ -119,6 +120,7 @@ if (empty($_SESSION['email'])) {
         include dirname(__DIR__) . '/views/departments.php';
         include dirname(__DIR__) . '/views/payroll.php';
         include dirname(__DIR__) . '/views/periods.php';
+        include dirname(__DIR__) . '/views/holidays.php';
         include dirname(__DIR__) . '/views/preaudit.php';
         include dirname(__DIR__) . '/views/suspensions.php';
         include dirname(__DIR__) . '/views/documents.php';

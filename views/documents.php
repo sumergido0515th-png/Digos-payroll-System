@@ -104,6 +104,10 @@ Pages.documents = (function () {
       // '', so the control would render as a permanently empty "All" - a
       // filter that looks broken rather than one that has nothing to say. It
       // belongs here once the Backlog's Function/PPA data entry is done.
+      // The row the LIST returns does not carry the covered employees - only
+      // a count of them. Editing from that row is what silently emptied the
+      // coverage; see edit() below.
+      get: 'apiGetMemorandum',
       facetApi: 'apiGetMemorandumFacets',
       facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
         ['AuthorityType', 'Authority type'], ['EffectivityType', 'Effectivity']],
@@ -279,6 +283,23 @@ Pages.documents = (function () {
     return options(employees, 'EmployeeID', 'EmployeeName', selected, 'Select employee...');
   }
 
+  /**
+   * The covered-employee multi-select, with the memorandum's own list marked.
+   *
+   * `covered` is apiGetMemorandum's CoveredEmployees - rows, not ids, and
+   * already scope-filtered by the endpoint. A new memorandum has none, which
+   * renders every option unselected, which is correct there.
+   */
+  function coveredOptions(covered) {
+    var ids = (covered || []).map(function (e) { return e.EmployeeID; });
+
+    return employees.map(function (e) {
+      return '<option value="' + esc(e.EmployeeID) + '"' +
+        (ids.indexOf(e.EmployeeID) >= 0 ? ' selected' : '') + '>' +
+        esc(e.EmployeeName) + '</option>';
+    }).join('');
+  }
+
   /** Builds the form body for the active tab. */
   function formHtml(r) {
     r = r || {};
@@ -301,8 +322,16 @@ Pages.documents = (function () {
         field('Specific Dates', '<input class="form-control form-control-sm" name="SpecificDates" placeholder="2026-07-04,2026-07-11" value="' + esc(r.SpecificDates || '') + '">', 6) +
         field('Weekdays', '<input class="form-control form-control-sm" name="RecurrenceDays" placeholder="1,3 = Mon and Wed" value="' + esc(r.RecurrenceDays || '') + '">', 6) +
         field('Covered Employees', '<select class="form-select form-select-sm" name="EmployeeIDs" multiple size="6">' +
-          options(employees, 'EmployeeID', 'EmployeeName', '', undefined) + '</select>' +
-          '<div class="form-text">Only employees within your access are listed.</div>', 6) +
+          // NOT options(): that helper takes one selected value, and this is a
+          // set. It used to be called with '' here, so the control rendered
+          // with nothing selected on an edit - and because saving REPLACES the
+          // coverage with whatever is selected, correcting a typo in the
+          // subject deleted every employee the memorandum covered. The memo
+          // survived, looked right, and authorised nobody.
+          coveredOptions(r.CoveredEmployees) + '</select>' +
+          '<div class="form-text">Only employees within your access are listed. ' +
+          'Saving replaces this list, so what is selected here is what the ' +
+          'memorandum will cover.</div>', 6) +
         field('Remarks', '<textarea class="form-control form-control-sm" name="Remarks" rows="3">' + esc(r.Remarks || '') + '</textarea>', 6) +
         '</div>';
     }
@@ -643,10 +672,24 @@ Pages.documents = (function () {
       loadFacets(params).then(load);
     },
 
+    /**
+     * Opens the edit form, from the detail endpoint where the tab has one.
+     *
+     * Only Memoranda do, and the reason is the bug this fixed: the list row
+     * carries CoveredCount but not the employees themselves, so a form built
+     * from it could not show them - and saving replaces the coverage with
+     * whatever the control holds. Every other tab's list row IS the whole
+     * record, so they open from it and cost no second request.
+     */
     edit: function (id) {
       var cfg = TABS[tab];
       var row = Pages.documents._rows.filter(function (r) { return r[cfg.key] === id; })[0];
-      openForm(row);
+
+      if (!cfg.get) { openForm(row); return; }
+
+      var payload = {};
+      payload[cfg.key] = id;
+      busy(api(cfg.get, payload)).then(openForm);
     },
 
     remove: function (id) {

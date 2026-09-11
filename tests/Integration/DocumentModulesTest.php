@@ -110,6 +110,53 @@ final class DocumentModulesTest extends TestCase
         $this->assertSame([self::MY_EMPLOYEE], array_column($memo['CoveredEmployees'], 'EmployeeID'));
     }
 
+    /**
+     * Saving REPLACES the coverage. An absent EmployeeIDs clears it.
+     *
+     * Pinned in both directions because each is load-bearing and they pull
+     * against each other:
+     *
+     *  - Replacing is how an employee is REMOVED from a memorandum. There is
+     *    no separate "uncover" verb; deselecting them in the form and saving
+     *    is the whole mechanism. Make an absent key mean "leave the coverage
+     *    alone" and removing somebody becomes impossible.
+     *  - Replacing is also destructive, and on 2026-09-11 it cost a real one:
+     *    views/documents.php rendered the covered-employee multi-select with
+     *    nothing selected, so correcting a typo in a subject sent an empty
+     *    list and deleted every employee the memorandum covered. The memo
+     *    survived, read correctly, and authorised nobody - AuthorityResolver
+     *    answers from exactly this table.
+     *
+     * So the contract is not the bug and must not be "fixed" here. What was
+     * wrong was a form that did not show what it was about to replace. This
+     * test exists so the next person to meet that empty list knows which side
+     * to change.
+     */
+    public function testSavingReplacesTheCoverageRatherThanAddingToIt(): void
+    {
+        $saved = \apiSaveMemorandum(
+            $this->memoPayload(['EmployeeIDs' => [self::MY_EMPLOYEE]]), $this->mine());
+        $memoId = $saved['MemoID'];
+
+        // Absent key - what an unpopulated form sends.
+        \apiSaveMemorandum(
+            $this->memoPayload(['MemoID' => $memoId, 'Subject' => 'Corrected subject']),
+            $this->mine());
+
+        $memo = \apiGetMemorandum(['MemoID' => $memoId], $this->mine());
+        $this->assertSame([], $memo['CoveredEmployees'],
+            'An absent EmployeeIDs no longer clears the coverage. If that was deliberate, '
+            . 'deselecting an employee in the form can no longer remove them.');
+
+        // And it goes back, so this is replacement rather than one-way loss.
+        \apiSaveMemorandum(
+            $this->memoPayload(['MemoID' => $memoId, 'EmployeeIDs' => [self::MY_EMPLOYEE]]),
+            $this->mine());
+
+        $memo = \apiGetMemorandum(['MemoID' => $memoId], $this->mine());
+        $this->assertSame([self::MY_EMPLOYEE], array_column($memo['CoveredEmployees'], 'EmployeeID'));
+    }
+
     /** A control number is the document's identity; two rows cannot share one. */
     public function testADuplicateControlNumberIsRefused(): void
     {
