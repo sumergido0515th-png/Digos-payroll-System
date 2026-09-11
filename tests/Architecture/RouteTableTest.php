@@ -113,13 +113,13 @@ final class RouteTableTest extends TestCase
 
         // UI that was never built. Each is a feature, not a spare endpoint.
         //
-        // The four holiday endpoints came OFF this list on 2026-09-11, which
-        // is the list working as intended: views/holidays.php calls them, and
-        // this guard failed until the entries were removed. apiResolveDay did
-        // not, because that screen does not ask it anything.
-        'apiResolveDay' => 'app/Calendar.php\'s own header calls this "the endpoint a screen '
-            . 'calls to ask what this date was"; views/holidays.php maintains the calendar '
-            . 'but nothing yet resolves a single date against it for one employee',
+        // The whole Phase 4 calendar cluster came OFF this list on 2026-09-11,
+        // in two steps, and the guard failed at each until the entries were
+        // removed - which is the list working as intended. First the four
+        // holiday endpoints, when views/holidays.php gave the tables a screen;
+        // then apiResolveDay, when views/dtr.php grew the "What was this day?"
+        // panel that asks it. Phase 4 had shipped the resolvers, the tables
+        // and the routes, and none of it was reachable.
         'apiImportBiometricLogs' => 'no biometric import screen - views/import.php covers '
             . 'master data only, deliberately (see the Backlog), but nothing covers this either',
         'apiAmendContract' => 'contract amendment has no UI; views/documents.php offers save '
