@@ -126,8 +126,14 @@ final class RouteTableTest extends TestCase
         // then apiResolveDay, when views/dtr.php grew the "What was this day?"
         // panel that asks it. Phase 4 had shipped the resolvers, the tables
         // and the routes, and none of it was reachable.
-        'apiImportBiometricLogs' => 'no biometric import screen - views/import.php covers '
-            . 'master data only, deliberately (see the Backlog), but nothing covers this either',
+        // apiImportBiometricLogs came off this list on 2026-09-11:
+        // views/dtr.php gained a paste/upload panel, deliberately NOT wired
+        // through EntitySpec's master-data pipeline - the Backlog's own note
+        // on this endpoint says why ("a second way in risks undercutting"
+        // the hand-keyed-day rule DtrRepo::upsertDay's caller already
+        // enforces). The panel defines its own fixed header vocabulary and
+        // validates every row against the exact patterns the server would
+        // reject with, before anything is sent.
         'apiAmendContract' => 'contract amendment has no UI; views/documents.php offers save '
             . 'and renew only',
         'apiGetContractHistory' => 'no UI shows a contract\'s superseded versions',

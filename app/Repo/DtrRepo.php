@@ -123,6 +123,24 @@ final class DtrRepo
         DB::exec($sql, array_merge([$dtrDayId], array_values($record)));
     }
 
+    /**
+     * Runs $fn inside a transaction and returns what it returns.
+     *
+     * Exists so app/Dtr.php's biometric import loop writes all-or-nothing.
+     * DB:: is confined to app/Repo/, so that loop cannot open a transaction
+     * itself - and it must: without one, a malformed punch partway through a
+     * batch (nullableTime()/nullableDate() throw on a bad value) left every
+     * punch before it already committed and every punch after it never
+     * attempted, with the caller seeing one error message and no way to tell
+     * which rows landed. Verified live before this existed: punch 3 of 4 with
+     * an unparseable TimeIn1 threw "Time in must be a time like 08:00 or
+     * 17:30." and punches 1-2 were already in DtrDays.
+     */
+    public static function withTransaction(callable $fn): mixed
+    {
+        return DB::tx($fn);
+    }
+
     /** Removes one day row. */
     public static function deleteDay(string $employeeId, string $workDate): int
     {

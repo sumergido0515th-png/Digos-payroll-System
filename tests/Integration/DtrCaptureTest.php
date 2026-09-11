@@ -172,6 +172,43 @@ final class DtrCaptureTest extends TestCase
         $this->assertSame('Manual', $kept['Source']);
     }
 
+    /**
+     * A malformed punch anywhere in a batch must write NOTHING, not just stop.
+     *
+     * Found live before this test existed: nullableTime()/nullableDate() throw
+     * on a bad value, and the import loop had no transaction, so a batch of
+     * four punches with a broken TimeIn1 on the third wrote the first two,
+     * never attempted the fourth, and surfaced one exception naming only the
+     * bad row - with nothing in the response saying two rows had already
+     * landed. The caller's only honest move on that error is to guess whether
+     * a retry double-imports.
+     */
+    public function testAMalformedPunchRollsBackTheWholeBatch(): void
+    {
+        $before = TestDatabase::connect()->query(
+            "SELECT COUNT(*) c FROM DtrDays WHERE PeriodID = '" . self::PERIOD . "'")
+            ->fetch()['c'];
+
+        $message = $this->refusalFrom(fn() => \apiImportBiometricLogs(
+            ['PeriodID' => self::PERIOD, 'punches' => [
+                ['EmployeeID' => self::EMPLOYEE, 'WorkDate' => '2026-07-01', 'HoursWorked' => 8],
+                ['EmployeeID' => self::EMPLOYEE, 'WorkDate' => '2026-07-02', 'HoursWorked' => 8],
+                ['EmployeeID' => self::EMPLOYEE, 'WorkDate' => '2026-07-03',
+                    'TimeIn1' => 'not-a-time'],
+                ['EmployeeID' => self::EMPLOYEE, 'WorkDate' => '2026-07-04', 'HoursWorked' => 8],
+            ]], $this->keeper()));
+
+        $this->assertStringContainsString('Time in must be a time', $message);
+
+        $after = TestDatabase::connect()->query(
+            "SELECT COUNT(*) c FROM DtrDays WHERE PeriodID = '" . self::PERIOD . "'")
+            ->fetch()['c'];
+
+        $this->assertSame($before, $after,
+            'The two punches ahead of the malformed one were left committed - the import is not '
+                . 'all-or-nothing.');
+    }
+
     /* ------------------------------------------------------------- integrity */
 
     /** A day outside its period would be counted by nobody. */

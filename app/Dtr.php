@@ -232,65 +232,72 @@ function apiImportBiometricLogs(array $p, array $user): array
     $punches = $p['punches'];
     if (!is_array($punches)) throw new RuntimeException('Punches must be a list.');
 
-    $imported = 0;
-    $conflicts = [];
-    $seen = [];
+    // All-or-nothing. nullableTime()/nullableDate() throw on a malformed
+    // value, and without a transaction that left every punch before the bad
+    // one already written and every punch after it never attempted - the
+    // caller saw one error message with no way to tell which rows landed.
+    // See DtrRepo::withTransaction()'s own comment for how this was found.
+    return DtrRepo::withTransaction(function () use ($p, $user, $period, $punches): array {
+        $imported = 0;
+        $conflicts = [];
+        $seen = [];
 
-    foreach ($punches as $punch) {
-        if (!is_array($punch)) throw new RuntimeException('Each punch must be a record.');
+        foreach ($punches as $punch) {
+            if (!is_array($punch)) throw new RuntimeException('Each punch must be a record.');
 
-        $employeeId = trim((string) ($punch['EmployeeID'] ?? ''));
-        $workDate = nullableDate($punch['WorkDate'] ?? null, 'Work date');
-        if ($employeeId === '' || $workDate === null) continue;
+            $employeeId = trim((string) ($punch['EmployeeID'] ?? ''));
+            $workDate = nullableDate($punch['WorkDate'] ?? null, 'Work date');
+            if ($employeeId === '' || $workDate === null) continue;
 
-        if (!isset($seen[$employeeId])) {
-            requireEmployeeInScope($user, $employeeId, 'a biometric import');
-            $seen[$employeeId] = true;
-        }
-        if ($workDate < (string) $period['StartDate'] || $workDate > (string) $period['EndDate']) {
-            continue;                       // not this period's business
-        }
-
-        $existingId = DtrRepo::existingDayId($employeeId, $workDate);
-        if ($existingId !== '') {
-            $existing = DtrRepo::daysForEmployeeScoped($user, $employeeId, (string) $p['PeriodID']);
-            $match = array_values(array_filter($existing,
-                fn(array $d) => (string) $d['WorkDate'] === $workDate));
-
-            if ($match && ($match[0]['Source'] ?? '') === 'Manual') {
-                $conflicts[] = ['EmployeeID' => $employeeId, 'WorkDate' => $workDate];
-                continue;
+            if (!isset($seen[$employeeId])) {
+                requireEmployeeInScope($user, $employeeId, 'a biometric import');
+                $seen[$employeeId] = true;
             }
+            if ($workDate < (string) $period['StartDate'] || $workDate > (string) $period['EndDate']) {
+                continue;                       // not this period's business
+            }
+
+            $existingId = DtrRepo::existingDayId($employeeId, $workDate);
+            if ($existingId !== '') {
+                $existing = DtrRepo::daysForEmployeeScoped($user, $employeeId, (string) $p['PeriodID']);
+                $match = array_values(array_filter($existing,
+                    fn(array $d) => (string) $d['WorkDate'] === $workDate));
+
+                if ($match && ($match[0]['Source'] ?? '') === 'Manual') {
+                    $conflicts[] = ['EmployeeID' => $employeeId, 'WorkDate' => $workDate];
+                    continue;
+                }
+            }
+
+            DtrRepo::upsertDay($existingId !== '' ? $existingId : newId('DTR'), [
+                'EmployeeID' => $employeeId,
+                'WorkDate' => $workDate,
+                'PeriodID' => (string) $p['PeriodID'],
+                'TimeIn1' => nullableTime($punch['TimeIn1'] ?? null, 'Time in'),
+                'TimeOut1' => nullableTime($punch['TimeOut1'] ?? null, 'Time out'),
+                'TimeIn2' => nullableTime($punch['TimeIn2'] ?? null, 'Afternoon time in'),
+                'TimeOut2' => nullableTime($punch['TimeOut2'] ?? null, 'Afternoon time out'),
+                'HoursWorked' => round2($punch['HoursWorked'] ?? 0),
+                'OvertimeHours' => round2($punch['OvertimeHours'] ?? 0),
+                'LateMinutes' => round2($punch['LateMinutes'] ?? 0),
+                'UndertimeMinutes' => round2($punch['UndertimeMinutes'] ?? 0),
+                'IsAbsent' => 0,
+                'DayType' => 'Regular',
+                'Source' => 'Biometric',
+                'Remarks' => (string) ($punch['Remarks'] ?? ''),
+            ]);
+            $imported++;
         }
 
-        DtrRepo::upsertDay($existingId !== '' ? $existingId : newId('DTR'), [
-            'EmployeeID' => $employeeId,
-            'WorkDate' => $workDate,
-            'PeriodID' => (string) $p['PeriodID'],
-            'TimeIn1' => nullableTime($punch['TimeIn1'] ?? null, 'Time in'),
-            'TimeOut1' => nullableTime($punch['TimeOut1'] ?? null, 'Time out'),
-            'TimeIn2' => nullableTime($punch['TimeIn2'] ?? null, 'Afternoon time in'),
-            'TimeOut2' => nullableTime($punch['TimeOut2'] ?? null, 'Afternoon time out'),
-            'HoursWorked' => round2($punch['HoursWorked'] ?? 0),
-            'OvertimeHours' => round2($punch['OvertimeHours'] ?? 0),
-            'LateMinutes' => round2($punch['LateMinutes'] ?? 0),
-            'UndertimeMinutes' => round2($punch['UndertimeMinutes'] ?? 0),
-            'IsAbsent' => 0,
-            'DayType' => 'Regular',
-            'Source' => 'Biometric',
-            'Remarks' => (string) ($punch['Remarks'] ?? ''),
-        ]);
-        $imported++;
-    }
-
-    return [
-        'imported' => $imported,
-        'conflicts' => $conflicts,
-        'message' => $conflicts
-            ? count($conflicts) . ' day(s) already had a hand-keyed entry and were left alone. '
-                . 'Review them before overwriting - a manual entry is a claim the pre-audit checks.'
-            : 'Imported ' . $imported . ' day(s).',
-    ];
+        return [
+            'imported' => $imported,
+            'conflicts' => $conflicts,
+            'message' => $conflicts
+                ? count($conflicts) . ' day(s) already had a hand-keyed entry and were left alone. '
+                    . 'Review them before overwriting - a manual entry is a claim the pre-audit checks.'
+                : 'Imported ' . $imported . ' day(s).',
+        ];
+    });
 }
 
 /* ==========================================================================
