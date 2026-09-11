@@ -16,13 +16,8 @@
   <div class="card mt-3">
     <div class="card-body py-2">
       <div class="row g-2 align-items-end">
-        <div class="col-md-5"><label class="form-label">Live Search</label>
+        <div class="col-md-8"><label class="form-label">Live Search</label>
           <input class="form-control form-control-sm" id="doc-search" placeholder="Search..."></div>
-        <div class="col-md-3"><label class="form-label">Status</label>
-          <select class="form-select form-select-sm" id="doc-status">
-            <option value="">All</option><option>Active</option>
-            <option>Superseded</option><option>Inactive</option>
-          </select></div>
         <div class="col-md-4 text-end">
           <!-- Same filters the active tab is showing - see public/export.php.
                Absent on the Work Shifts tab, which is unscoped reference
@@ -47,6 +42,14 @@
             <span class="material-icons" id="doc-direction-icon" style="font-size:16px;vertical-align:-3px">arrow_downward</span>
             <span id="doc-direction-label">Newest first</span></button></div>
       </div>
+      <!-- Built per tab from that entity's own scoped facet endpoint, never
+           from App.lookups: an office dropdown listing every office in the
+           city gives up the org chart before a row is fetched, which is the
+           disclosure 9E found on Payroll, Employees and Reports. The Status
+           choices come from here too - they used to be one hardcoded list
+           shared by all five tabs, which offered memoranda an "Inactive" they
+           never have while hiding the "Revoked" they do. -->
+      <div class="row g-2 align-items-end mt-1" id="doc-facet-row"></div>
     </div>
   </div>
 
@@ -87,6 +90,15 @@ Pages.documents = (function () {
       sorts: [['issued', 'Date issued'], ['received', 'Date received'],
         ['effectivity', 'Effectivity start'], ['controlNo', 'Control no.'],
         ['office', 'Office'], ['status', 'Status']],
+      // FunctionCode is a FilterSpec facet and is deliberately not offered
+      // yet. 0004 backfilled it from FunctionName and left NULL whatever did
+      // not resolve, which is still every row: FacetOptions skips NULL and
+      // '', so the control would render as a permanently empty "All" - a
+      // filter that looks broken rather than one that has nothing to say. It
+      // belongs here once the Backlog's Function/PPA data entry is done.
+      facetApi: 'apiGetMemorandumFacets',
+      facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
+        ['AuthorityType', 'Authority type'], ['EffectivityType', 'Effectivity']],
       head: ['Control No.', 'Subject', 'Authority', 'Office', 'Effectivity', 'Covers', 'Status'],
       cells: function (r) {
         return [r.ControlNo, r.Subject, r.AuthorityType, r.OfficeCode || 'Citywide',
@@ -99,6 +111,9 @@ Pages.documents = (function () {
       perm: 'document.edit', delPerm: 'document.delete',
       sorts: [['validFrom', 'Valid from'], ['validTo', 'Valid to'],
         ['reason', 'Reason'], ['status', 'Status']],
+      facetApi: 'apiGetBioExemptionFacets',
+      facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
+        ['ReasonCode', 'Reason'], ['ProofType', 'Proof type']],
       head: ['Employee', 'Office', 'Reason', 'Valid From', 'Valid To', 'Proof', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.ReasonCode || r.Reason,
@@ -111,6 +126,8 @@ Pages.documents = (function () {
       perm: 'document.edit', delPerm: 'document.delete',
       sorts: [['depart', 'Depart date'], ['return', 'Return date'],
         ['travelOrderNo', 'T.O. no.'], ['status', 'Status']],
+      facetApi: 'apiGetTravelOrderFacets',
+      facets: [['Status', 'Status'], ['OfficeCode', 'Office']],
       head: ['T.O. No.', 'Employee', 'Destination', 'Depart', 'Return', 'Per Diem', 'Status'],
       cells: function (r) {
         return [r.TravelOrderNo, r.EmployeeName, r.Destination,
@@ -131,6 +148,9 @@ Pages.documents = (function () {
       title: 'Contract', list: 'apiListContracts', save: 'apiSaveContract',
       key: 'ContractID', entity: 'Contracts', perm: 'contract.edit',
       sorts: [['start', 'Start date'], ['end', 'End date'], ['status', 'Status']],
+      facetApi: 'apiGetContractFacets',
+      facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
+        ['TypeCode', 'Type'], ['RateBasis', 'Rate basis']],
       head: ['Employee', 'Office', 'Type', 'Basis', 'Rate', 'Start', 'End', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.TypeCode || '-', r.RateBasis,
@@ -163,10 +183,12 @@ Pages.documents = (function () {
   /** Loads and renders the active tab. */
   function load() {
     var cfg = TABS[tab];
-    var filters = {
-      search: document.getElementById('doc-search').value,
-      Status: document.getElementById('doc-status').value
-    };
+    var filters = { search: document.getElementById('doc-search').value };
+
+    (cfg.facets || []).forEach(function (f) {
+      var sel = document.getElementById('doc-f-' + f[0]);
+      if (sel && sel.value) filters[f[0]] = sel.value;
+    });
 
     // Only for a FilterSpec entity: the Work Shifts tab's apiListWorkShifts
     // does not go through the query core and has no sort allowlist to name.
@@ -392,6 +414,70 @@ Pages.documents = (function () {
       direction === 'ASC' ? 'Oldest first' : 'Newest first';
   }
 
+  /** Facet choices per tab, fetched once per page visit. */
+  var facetCache = {};
+
+  /**
+   * Builds the active tab's filter dropdowns.
+   *
+   * `choices` is the scoped facet response - entity key => the values that
+   * actually occur in rows this caller may see - or null when the fetch
+   * failed. A null renders the controls disabled and saying so rather than
+   * as empty "All" dropdowns, which would look like an entity with nothing
+   * to filter by instead of a filter bar that did not load.
+   */
+  function renderFacets(choices, selected) {
+    var cfg = TABS[tab];
+    var row = document.getElementById('doc-facet-row');
+    selected = selected || {};
+
+    if (!cfg.facets) { row.innerHTML = ''; return; }
+
+    row.innerHTML = cfg.facets.map(function (f) {
+      var body = choices
+        ? options(choices[f[0]] || [], null, null, selected[f[0]] || '', 'All')
+        : '<option value="">Unavailable</option>';
+      return '<div class="col-md-3"><label class="form-label">' + esc(f[1]) + '</label>' +
+        '<select class="form-select form-select-sm" id="doc-f-' + esc(f[0]) + '"' +
+        (choices ? '' : ' disabled') + '>' + body + '</select></div>';
+    }).join('');
+
+    // The selects are rebuilt on every tab switch, so the handlers go on with
+    // them rather than once at init.
+    cfg.facets.forEach(function (f) {
+      var sel = document.getElementById('doc-f-' + f[0]);
+      if (sel) sel.onchange = load;
+    });
+  }
+
+  /**
+   * Fetches the active tab's facet choices and renders them, keeping any
+   * values a shared link asked for.
+   *
+   * Resolves only once the controls exist, because load() builds its filters
+   * by reading them. Let the two race and the first request goes out without
+   * the link's facet values and nothing re-issues it: the dropdowns read
+   * "Superseded, COS" over a list showing every contract. Verified by
+   * sabotage - `loadFacets(params); load();` returns 3 rows where
+   * `loadFacets(params).then(load)` returns 1.
+   */
+  function loadFacets(selected) {
+    var cfg = TABS[tab];
+    if (!cfg.facetApi) { renderFacets(null, selected); return Promise.resolve(); }
+    if (facetCache[tab]) { renderFacets(facetCache[tab], selected); return Promise.resolve(); }
+
+    var forTab = tab;
+    return api(cfg.facetApi, {}, true).then(function (d) {
+      facetCache[forTab] = d || {};
+      if (tab === forTab) renderFacets(facetCache[forTab], selected);
+    }, function () {
+      // Silent like the watchlists: a role that cannot read this entity would
+      // otherwise toast on every visit to its tab. renderFacets(null) is what
+      // tells the person looking at it.
+      if (tab === forTab) renderFacets(null, selected);
+    });
+  }
+
   return {
     _rows: [],
 
@@ -402,12 +488,15 @@ Pages.documents = (function () {
         a.onclick = function (e) {
           e.preventDefault();
           selectTab(a.dataset.doc);
-          load();
+          // No selection carried over: each entity has its own facet keys, and
+          // a Status the previous tab had would be an unknown filter here -
+          // ignored rather than refused, so the list would quietly show more
+          // rows than the bar said it was showing.
+          loadFacets(null).then(load);
         };
       });
       selectTab(params.tab || 'memo');
       document.getElementById('doc-search').value = params.search || '';
-      document.getElementById('doc-status').value = params.Status || '';
 
       // A shared link can carry a sort key belonging to a different tab
       // (#documents?tab=bioex&sort=controlNo). Assigning an absent option
@@ -423,7 +512,6 @@ Pages.documents = (function () {
       updateDirectionButton();
 
       document.getElementById('doc-search').oninput = debounce(load);
-      document.getElementById('doc-status').onchange = load;
       document.getElementById('doc-sort').onchange = load;
       document.getElementById('doc-direction').onclick = function () {
         direction = direction === 'ASC' ? 'DESC' : 'ASC';
@@ -443,8 +531,10 @@ Pages.documents = (function () {
         employees = (d.rows || []).map(function (e) {
           return { EmployeeID: e.EmployeeID, EmployeeName: e.LastName + ', ' + e.FirstName };
         });
-        load();
       });
+
+      // Sequenced, not raced - see loadFacets().
+      loadFacets(params).then(load);
     },
 
     edit: function (id) {
