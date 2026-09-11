@@ -76,6 +76,62 @@ final class RouteTableTest extends TestCase
             . 'ratified 2026-08-29',
     ];
 
+    /**
+     * Routed endpoints no screen calls, each with the reason.
+     *
+     * WHY THIS GUARD EXISTS
+     * The other guards in this file prove a route is wired, permissioned and
+     * audited. None of them proves anybody can reach it. The gap has cost
+     * three real defects: `apiGetPayrollFacets`/`apiGetEmployeeFacets` sat
+     * unused while the filter bars they were written for disclosed the
+     * citywide office list (9E); the four document facet endpoints sat unused
+     * while one hardcoded Status list served five tabs, offering memoranda a
+     * status no memo can hold; and `apiReturnPayroll` sat unused while
+     * RETURNED_TO_PREPARER - a state in PayrollWorkflow::FLOW, in EDITABLE,
+     * with the Payroll screen already offering edit and re-submit on it - was
+     * unreachable from the UI entirely.
+     *
+     * Every one of those was invisible because nothing fails when a working
+     * endpoint has no caller. This list is the record of what is still in
+     * that position. **It may only shrink**, like
+     * DatabaseAccessTest's grandfather list: an entry comes off when a screen
+     * calls it, and a new one goes on only with a reason a reader can weigh.
+     *
+     * @var array<string,string>
+     */
+    private const NOT_CALLED_BY_ANY_SCREEN = [
+        // Superseded rather than missing.
+        'apiLogout' => 'public/logout.php calls the same authLogout() and is what the '
+            . 'sign-out button navigates to; this is a second door to one room',
+        'apiGetDtrTotals' => 'apiGetDtrGrid already returns grid.totals, which is what '
+            . 'views/dtr.php renders',
+        'apiGetMemorandum' => 'views/documents.php opens its edit form from the row the '
+            . 'list already returned; this is the read that also carries the covered '
+            . 'employees, which that form therefore does not show',
+        'apiGetRoles' => 'views/users.php builds its role dropdown from App.lookups',
+        'apiGetScopeDimensions' => 'views/users.php builds its grant form from App.lookups',
+
+        // UI that was never built. Each is a feature, not a spare endpoint.
+        'apiListHolidays' => 'no holiday screen exists at all - migration 0019 shipped the '
+            . 'table and the pay rules, and the only trace in the UI is a legend label in '
+            . 'views/coverage.php and a day-type option in views/dtr.php',
+        'apiSaveHoliday' => 'no holiday screen exists',
+        'apiDeleteHoliday' => 'no holiday screen exists',
+        'apiListHolidayPayRules' => 'no holiday screen exists',
+        'apiResolveDay' => 'app/Calendar.php\'s own header calls this "the endpoint a screen '
+            . 'calls to ask what this date was"; no screen asks',
+        'apiImportBiometricLogs' => 'no biometric import screen - views/import.php covers '
+            . 'master data only, deliberately (see the Backlog), but nothing covers this either',
+        'apiAmendContract' => 'contract amendment has no UI; views/documents.php offers save '
+            . 'and renew only',
+        'apiGetContractHistory' => 'no UI shows a contract\'s superseded versions',
+        'apiGetWorkShiftHistory' => 'no UI shows a shift\'s superseded versions, though '
+            . 'apiListWorkShifts takes IncludeSuperseded',
+        'apiDeleteDtrDay' => 'views/dtr.php saves a whole grid; it has no per-day delete',
+        'apiGetAttachment' => 'views/coverage.php lists attachments and links to '
+            . 'public/download.php for the file; nothing reads one back through the API',
+    ];
+
     public function testEveryRouteResolvesToADefinedFunction(): void
     {
         $functions = SourceTree::apiFunctions();
@@ -216,6 +272,90 @@ final class RouteTableTest extends TestCase
             "the Logs table, and the Phase 8 certification could not account for\n" .
             "them:\n  - %s",
             implode("\n  - ", $unlogged)));
+    }
+
+    /**
+     * Every route is either called by something a person can reach, or listed
+     * above with the reason it is not.
+     *
+     * "Reachable" is deliberately shallow - the action name appearing as a
+     * QUOTED string in a view, a public entry point or app.js. It cannot
+     * prove the call site is on a path a user can walk, and it is not meant
+     * to: what it catches is the endpoint with no call site at all, which is
+     * the shape all three defects above had.
+     *
+     * The quotes are load-bearing, and the first version of this test did not
+     * have them. Every real call spells the action as a string literal -
+     * `api('apiListSuspensions', ...)`, or `list: 'apiListMemoranda'` in a
+     * config table that `api(cfg.list)` later reads - while a comment naming
+     * one writes it bare or in backticks. Matching the bare word made the
+     * guard pass its own sabotage: un-wiring `apiReturnPayroll` from
+     * views/preaudit.php left the docblock above it still saying the name,
+     * and the guard read the prose as the caller. That is this codebase's
+     * recurring defect (see DatabaseAccessTest's generator, and
+     * SourceTree::readCode, which strips PHP comments but cannot reach
+     * JavaScript inside a <script> tag), caught here by sabotage rather than
+     * shipped.
+     */
+    public function testEveryRouteIsCalledByTheFrontendOrListedAsNotCalled(): void
+    {
+        $callers = self::frontendSources();
+        $uncalled = [];
+        $stale = [];
+
+        foreach (array_keys(SourceTree::routes()) as $action) {
+            $called = false;
+            foreach ($callers as $source) {
+                if (preg_match('/[\'"]' . preg_quote($action, '/') . '[\'"]/', $source)) {
+                    $called = true;
+                    break;
+                }
+            }
+
+            if (!$called && !isset(self::NOT_CALLED_BY_ANY_SCREEN[$action])) {
+                $uncalled[] = $action;
+            }
+            if ($called && isset(self::NOT_CALLED_BY_ANY_SCREEN[$action])) {
+                $stale[] = $action;
+            }
+        }
+
+        $this->assertSame([], $uncalled, sprintf(
+            "Routed endpoints no string literal in views/, public/*.php or app.js names:\n  - %s\n" .
+            "A working endpoint with no caller fails nothing and is invisible. Either wire "
+            . "it to a screen, or add it to NOT_CALLED_BY_ANY_SCREEN with the reason.",
+            implode("\n  - ", $uncalled)));
+
+        $this->assertSame([], $stale, sprintf(
+            "NOT_CALLED_BY_ANY_SCREEN names endpoints a screen now calls:\n  - %s\n" .
+            "The list may only shrink - remove these entries.",
+            implode("\n  - ", $stale)));
+    }
+
+    /**
+     * Everything a browser loads, as text.
+     *
+     * public/api.php is excluded because it names every action by definition,
+     * which would make the guard pass on its own subject.
+     *
+     * @return string[]
+     */
+    private static function frontendSources(): array
+    {
+        $root = dirname(__DIR__, 2);
+        $paths = array_merge(
+            glob($root . '/views/*.php') ?: [],
+            glob($root . '/public/*.php') ?: [],
+            glob($root . '/public/assets/js/*.js') ?: []);
+
+        $sources = [];
+        foreach ($paths as $path) {
+            if (basename($path) === 'api.php') continue;
+            $sources[] = (string) file_get_contents($path);
+        }
+
+        self::assertNotEmpty($sources, 'No frontend sources found - the glob is wrong.');
+        return $sources;
     }
 
     public function testRouteTableIsNotEmpty(): void
