@@ -173,12 +173,15 @@ Pages.dashboard = (function () {
     { key: 'contract', perm: 'contract.view', title: 'Contracts Ending This Period', icon: 'assignment_late',
       api: 'apiGetContractWatchlist', page: 'documents', tab: 'contract', needsPeriod: true,
       row: function (r) { return esc(r.EmployeeName) + ' &ndash; ends ' + fmtDate(r.EndDate); } },
-    // No standalone list screen to link to - a suspension is read from
-    // within the payroll it was raised against, not as a list of its own -
-    // so the "View all" link only ever appears for a role that can actually
-    // reach the Worklist (payroll.approve), decided in loadWatchlist().
+    // Links to the Suspensions screen, which is gated on the same
+    // payroll.view this card is - so everyone who can see the card can follow
+    // it, and loadWatchlist() no longer needs the special case that existed
+    // while the only place to read a suspension was inside its own payroll.
+    // 'overdue' is what the card is showing; opening on anything wider would
+    // answer a different question from the one that was clicked.
     { key: 'suspension', perm: 'payroll.view', title: 'Suspensions Past Deadline', icon: 'gavel',
-      api: 'apiGetSuspensionWatchlist', page: 'preaudit', tab: null,
+      api: 'apiGetSuspensionWatchlist', page: 'suspensions', tab: null,
+      params: { overdue: 1, sort: 'deadline', direction: 'ASC' },
       row: function (r) { return esc(r.NsNo) + ' &ndash; ' + esc(r.GroundCode) + ', due ' + fmtDate(r.Deadline); } }
   ];
 
@@ -219,11 +222,9 @@ Pages.dashboard = (function () {
       if (rows.length > shown.length) {
         html += '<div class="text-muted small mb-1">+' + (rows.length - shown.length) + ' more</div>';
       }
-      if (w.key !== 'suspension' || can('payroll.approve')) {
-        html += '<a href="#" class="small" onclick="event.preventDefault();' +
-          jsCall('goToPage', w.tab ? [w.page, { tab: w.tab }] : [w.page]) +
-          '">View all &raquo;</a>';
-      }
+      html += '<a href="#" class="small" onclick="event.preventDefault();' +
+        jsCall('goToPage', w.tab ? [w.page, { tab: w.tab }] : (w.params ? [w.page, w.params] : [w.page])) +
+        '">View all &raquo;</a>';
       body.innerHTML = html;
     }).catch(function () { body.innerHTML = '<div class="text-muted small">Unavailable.</div>'; });
   }

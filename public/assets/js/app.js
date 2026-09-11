@@ -271,6 +271,7 @@ function can(perm) {
 var PAGE_TITLES = {
   dashboard: 'Dashboard', employees: 'Employees', payroll: 'Payroll Transactions',
   documents: 'Authority Documents', dtr: 'Daily Time Records', coverage: 'Coverage & Attachments', preaudit: 'Pre-Audit Worklist',
+  suspensions: 'Notices of Suspension',
   timekeepers: 'Timekeepers', departments: 'Departments & Offices',
   periods: 'Payroll Period', reports: 'Payroll Reports', print: 'Print Payroll',
   users: 'User Management', logs: 'Audit Logs', settings: 'Settings',
