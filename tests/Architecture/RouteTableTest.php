@@ -105,9 +105,15 @@ final class RouteTableTest extends TestCase
             . 'sign-out button navigates to; this is a second door to one room',
         'apiGetDtrTotals' => 'apiGetDtrGrid already returns grid.totals, which is what '
             . 'views/dtr.php renders',
-        'apiGetMemorandum' => 'views/documents.php opens its edit form from the row the '
-            . 'list already returned; this is the read that also carries the covered '
-            . 'employees, which that form therefore does not show',
+        // apiGetMemorandum came off this list on 2026-09-11. Its entry used to
+        // read "the form opens from the row the list returned; this is the
+        // read that also carries the covered employees, which that form
+        // therefore does not show" - which was an accurate description of a
+        // live data-loss bug, filed as a curiosity. Saving REPLACES the
+        // coverage with whatever the multi-select holds, and the control was
+        // rendered with nothing selected, so correcting a typo in a subject
+        // deleted every employee the memorandum covered. The unused endpoint
+        // was the fix for the bug that not using it had caused.
         'apiGetRoles' => 'views/users.php builds its role dropdown from App.lookups',
         'apiGetScopeDimensions' => 'views/users.php builds its grant form from App.lookups',
 
