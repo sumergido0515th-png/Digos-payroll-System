@@ -50,6 +50,14 @@
            shared by all five tabs, which offered memoranda an "Inactive" they
            never have while hiding the "Revoked" they do. -->
       <div class="row g-2 align-items-end mt-1" id="doc-facet-row"></div>
+      <!-- The "When" half. One range at a time, named by a dropdown, rather
+           than a From/To pair per date: Memoranda alone carry three
+           (issued, received, effectivity) and six date boxes is a filter bar
+           nobody reads. FilterSpec refuses a malformed date rather than
+           dropping it, and type="date" can only produce YYYY-MM-DD or
+           nothing, so the refusal is unreachable from here by construction -
+           it stays the guard for a hand-written URL. -->
+      <div class="row g-2 align-items-end mt-1" id="doc-date-row"></div>
     </div>
   </div>
 
@@ -99,6 +107,24 @@ Pages.documents = (function () {
       facetApi: 'apiGetMemorandumFacets',
       facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
         ['AuthorityType', 'Authority type'], ['EffectivityType', 'Effectivity']],
+      // "Effectivity (within)" is named differently because it means
+      // something different: IssuedFrom/IssuedTo are both DateIssued, so the
+      // range is a point falling inside it, while EffectiveFrom is
+      // EffectivityStart and EffectiveTo is EffectivityEnd - a memo matches
+      // when its whole span sits inside the window. Same two boxes, and a
+      // reader who is not told will read the second as the first.
+      //
+      // It has a sharper edge than the label can carry, confirmed against
+      // live rows rather than reasoned about: EffectivityEnd is NULL on every
+      // OpenEnded and Recurring memo, so `EffectivityEnd <= to` is NULL and
+      // filters them ALL out the moment a To date is set - the four open-ended
+      // memoranda the dashboard keeps a watchlist for included. Arguably
+      // right (a memo with no end is contained in no window) and arguably a
+      // trap; either way it is FilterSpec's semantics since 9B and not
+      // something to quietly re-decide in a view. Logged to the Backlog.
+      dates: [['Issued', 'IssuedFrom', 'IssuedTo'],
+        ['Received', 'ReceivedFrom', 'ReceivedTo'],
+        ['Effectivity (within)', 'EffectiveFrom', 'EffectiveTo']],
       head: ['Control No.', 'Subject', 'Authority', 'Office', 'Effectivity', 'Covers', 'Status'],
       cells: function (r) {
         return [r.ControlNo, r.Subject, r.AuthorityType, r.OfficeCode || 'Citywide',
@@ -114,6 +140,9 @@ Pages.documents = (function () {
       facetApi: 'apiGetBioExemptionFacets',
       facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
         ['ReasonCode', 'Reason'], ['ProofType', 'Proof type']],
+      // A span, like the memo's effectivity above: ValidFrom is the exemption's
+      // own ValidFrom and ValidTo its ValidTo.
+      dates: [['Validity (within)', 'ValidFrom', 'ValidTo']],
       head: ['Employee', 'Office', 'Reason', 'Valid From', 'Valid To', 'Proof', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.ReasonCode || r.Reason,
@@ -128,6 +157,8 @@ Pages.documents = (function () {
         ['travelOrderNo', 'T.O. no.'], ['status', 'Status']],
       facetApi: 'apiGetTravelOrderFacets',
       facets: [['Status', 'Status'], ['OfficeCode', 'Office']],
+      dates: [['Departure', 'DepartFrom', 'DepartTo'],
+        ['Return', 'ReturnFrom', 'ReturnTo']],
       head: ['T.O. No.', 'Employee', 'Destination', 'Depart', 'Return', 'Per Diem', 'Status'],
       cells: function (r) {
         return [r.TravelOrderNo, r.EmployeeName, r.Destination,
@@ -151,6 +182,8 @@ Pages.documents = (function () {
       facetApi: 'apiGetContractFacets',
       facets: [['Status', 'Status'], ['OfficeCode', 'Office'],
         ['TypeCode', 'Type'], ['RateBasis', 'Rate basis']],
+      dates: [['Start date', 'StartFrom', 'StartTo'],
+        ['End date', 'EndFrom', 'EndTo']],
       head: ['Employee', 'Office', 'Type', 'Basis', 'Rate', 'Start', 'End', 'Status'],
       cells: function (r) {
         return [r.EmployeeName, r.OfficeCode, r.TypeCode || '-', r.RateBasis,
@@ -189,6 +222,15 @@ Pages.documents = (function () {
       var sel = document.getElementById('doc-f-' + f[0]);
       if (sel && sel.value) filters[f[0]] = sel.value;
     });
+
+    // Only the range the dropdown is naming. Switching the dropdown therefore
+    // moves the dates to the new pair of keys rather than leaving the old
+    // pair applied behind a label that no longer says so.
+    var range = activeRange();
+    if (range) {
+      if (range.from) filters[range.fromKey] = range.from;
+      if (range.to) filters[range.toKey] = range.to;
+    }
 
     // Only for a FilterSpec entity: the Work Shifts tab's apiListWorkShifts
     // does not go through the query core and has no sort allowlist to name.
@@ -451,6 +493,68 @@ Pages.documents = (function () {
   }
 
   /**
+   * The date range the "When" row is currently naming, or null.
+   *
+   * @return {?{fromKey: string, toKey: string, from: string, to: string}}
+   */
+  function activeRange() {
+    var cfg = TABS[tab];
+    var which = document.getElementById('doc-date-field');
+    if (!cfg.dates || !which) return null;
+
+    var range = cfg.dates[Number(which.value) || 0];
+    return {
+      fromKey: range[1], toKey: range[2],
+      from: document.getElementById('doc-date-from').value,
+      to: document.getElementById('doc-date-to').value
+    };
+  }
+
+  /**
+   * Builds the "When" row for the active tab.
+   *
+   * The named range is carried by index rather than by its key, because the
+   * two keys are what the payload spells and the index is what the control
+   * is: naming the dropdown 'IssuedFrom' would leave the To key implicit and
+   * invite the two to be read from different places.
+   */
+  function renderDates(selected) {
+    var cfg = TABS[tab];
+    var row = document.getElementById('doc-date-row');
+    selected = selected || {};
+
+    if (!cfg.dates) { row.innerHTML = ''; return; }
+
+    // A shared link names its range by the keys it carries, so the dropdown
+    // follows the link rather than the link being forced onto range 0 - a
+    // ?DepartFrom=... that opened on "Return" would show a date the list is
+    // not filtered by.
+    var picked = 0;
+    cfg.dates.forEach(function (d, i) {
+      if (selected[d[1]] || selected[d[2]]) picked = i;
+    });
+    var range = cfg.dates[picked];
+
+    row.innerHTML =
+      '<div class="col-md-3"><label class="form-label">Date range</label>' +
+      '<select class="form-select form-select-sm" id="doc-date-field">' +
+      cfg.dates.map(function (d, i) {
+        return '<option value="' + i + '"' + (i === picked ? ' selected' : '') +
+          '>' + esc(d[0]) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="col-md-3"><label class="form-label">From</label>' +
+      '<input type="date" class="form-control form-control-sm" id="doc-date-from" value="' +
+      esc(selected[range[1]] || '') + '"></div>' +
+      '<div class="col-md-3"><label class="form-label">To</label>' +
+      '<input type="date" class="form-control form-control-sm" id="doc-date-to" value="' +
+      esc(selected[range[2]] || '') + '"></div>';
+
+    ['doc-date-field', 'doc-date-from', 'doc-date-to'].forEach(function (id) {
+      document.getElementById(id).onchange = load;
+    });
+  }
+
+  /**
    * Fetches the active tab's facet choices and renders them, keeping any
    * values a shared link asked for.
    *
@@ -463,6 +567,8 @@ Pages.documents = (function () {
    */
   function loadFacets(selected) {
     var cfg = TABS[tab];
+    renderDates(selected);
+
     if (!cfg.facetApi) { renderFacets(null, selected); return Promise.resolve(); }
     if (facetCache[tab]) { renderFacets(facetCache[tab], selected); return Promise.resolve(); }
 

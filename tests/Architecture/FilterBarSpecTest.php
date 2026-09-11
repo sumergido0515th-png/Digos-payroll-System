@@ -79,6 +79,34 @@ final class FilterBarSpecTest extends TestCase
     }
 
     /**
+     * Both halves of every date range are real date facets of that entity.
+     *
+     * Checked by building a spec that names only that key and looking at the
+     * condition it produced, rather than against a copy of the table: an
+     * unknown filter key is ignored, so a typo here would produce no
+     * condition at all - a From box the list never narrows by, which is the
+     * silent half of the asymmetry this file exists for.
+     */
+    public function testEveryDateRangeNamesTwoRealDateFacets(): void
+    {
+        foreach (self::documentTabs() as $tab => $cfg) {
+            foreach ($cfg['dates'] as $key) {
+                $conditions = FilterSpec::fromPayload($cfg['entity'], [$key => '2026-01-01'])
+                    ->conditions();
+
+                $this->assertCount(1, $conditions,
+                    "The '$tab' tab offers a '$key' date box, which {$cfg['entity']} has no facet "
+                    . 'for. An unknown filter key is ignored, so this is a date the person typed '
+                    . 'and the list never applied.');
+
+                $this->assertStringStartsWith('date', $conditions[0]['op'],
+                    "The '$tab' tab uses '$key' as a date box, but {$cfg['entity']} declares it "
+                    . "as '{$conditions[0]['op']}'.");
+            }
+        }
+    }
+
+    /**
      * A tab that names a facet endpoint must offer dropdowns, and vice versa.
      *
      * Either half alone is dead weight that looks like a working feature: an
@@ -103,7 +131,8 @@ final class FilterBarSpecTest extends TestCase
      * understanding fails here instead of passing vacuously.
      *
      * @return array<string, array{entity: string, facetApi: string,
-     *                             facets: string[], sorts: string[]}>
+     *                             facets: string[], sorts: string[],
+     *                             dates: string[]}>
      */
     private static function documentTabs(): array
     {
@@ -125,6 +154,7 @@ final class FilterBarSpecTest extends TestCase
                 'facetApi' => self::scalar($body, 'facetApi'),
                 'facets' => self::pairKeys($body, 'facets'),
                 'sorts' => self::pairKeys($body, 'sorts'),
+                'dates' => self::rangeKeys($body),
             ];
         }
 
@@ -154,5 +184,20 @@ final class FilterBarSpecTest extends TestCase
 
         preg_match_all("/\['([^']+)',/", $m[1] . ']', $pairs);
         return $pairs[1];
+    }
+
+    /**
+     * `dates: [['Issued', 'IssuedFrom', 'IssuedTo']]` -> both payload keys,
+     * flattened. The first element is the label the dropdown shows and is not
+     * a key.
+     *
+     * @return string[]
+     */
+    private static function rangeKeys(string $body): array
+    {
+        if (!preg_match('/\bdates: \[(.*?)\]\],/s', $body, $m)) return [];
+
+        preg_match_all("/\['[^']+', '([^']+)', '([^']+)'\]/", $m[1] . ']', $ranges);
+        return array_merge($ranges[1], $ranges[2]);
     }
 }
