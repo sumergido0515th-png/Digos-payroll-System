@@ -112,14 +112,14 @@ final class RouteTableTest extends TestCase
         'apiGetScopeDimensions' => 'views/users.php builds its grant form from App.lookups',
 
         // UI that was never built. Each is a feature, not a spare endpoint.
-        'apiListHolidays' => 'no holiday screen exists at all - migration 0019 shipped the '
-            . 'table and the pay rules, and the only trace in the UI is a legend label in '
-            . 'views/coverage.php and a day-type option in views/dtr.php',
-        'apiSaveHoliday' => 'no holiday screen exists',
-        'apiDeleteHoliday' => 'no holiday screen exists',
-        'apiListHolidayPayRules' => 'no holiday screen exists',
+        //
+        // The four holiday endpoints came OFF this list on 2026-09-11, which
+        // is the list working as intended: views/holidays.php calls them, and
+        // this guard failed until the entries were removed. apiResolveDay did
+        // not, because that screen does not ask it anything.
         'apiResolveDay' => 'app/Calendar.php\'s own header calls this "the endpoint a screen '
-            . 'calls to ask what this date was"; no screen asks',
+            . 'calls to ask what this date was"; views/holidays.php maintains the calendar '
+            . 'but nothing yet resolves a single date against it for one employee',
         'apiImportBiometricLogs' => 'no biometric import screen - views/import.php covers '
             . 'master data only, deliberately (see the Backlog), but nothing covers this either',
         'apiAmendContract' => 'contract amendment has no UI; views/documents.php offers save '
